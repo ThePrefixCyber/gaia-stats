@@ -133,3 +133,22 @@ Unit tests mock network, systemd and permissions where needed. Full-size dry-run
 publication and local preflight use real seed/archive data. Mac checks do not prove
 Linux systemd parsing or actual `gaia-stats` account access; the explicit on-VPS
 preflight and systemd validation above remain mandatory before rollout.
+
+## Bounded base-request computation
+
+Base statistics and filtered CSV exports decode at most 1,024 observations plus
+one game's boundary at a time. Complete games stay together, so per-cell distinct
+game counts add correctly. Each batch uses the reference statistics implementation;
+means are merged with observation weights and `math.fsum`, with only floating-point
+roundoff differences (regression tolerance 1e-10). Filter selection, cohort identity,
+rank counts, frequencies, missing-value treatment and comparison denominators are
+unchanged. Point-source quartiles/minimum/maximum are computed from the exact
+selected values, not an approximate sketch. No displayed outlier detail is removed;
+the existing API raw-value limit of 2,000 observations remains unchanged.
+
+Requests retain scalar summaries and point-source arrays rather than the complete
+nested dataset. JSON result caches remain limited to eight entries/16 MiB and tied
+to the data version. All generations in a worker share the expensive-work lock,
+including activation validation. The running code SHA is captured at worker startup
+and stays fixed across data refreshes. An interruption after atomic publication never
+deletes the possibly published generation; uncertain pointer reads retain it safely.

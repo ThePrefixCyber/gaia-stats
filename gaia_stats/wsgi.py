@@ -13,8 +13,20 @@ from .__main__ import ingest, response_for
 from .legacy_cache import is_classic_path
 
 
+_UNSET = object()
+
+def running_commit():
+    try:
+        return subprocess.check_output(
+            ["git", "-c", "safe.directory=" + str(Path(__file__).resolve().parent.parent), "rev-parse", "HEAD"],
+            cwd=Path(__file__).parent.parent, text=True, timeout=3,
+            stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 class Application:
-    def __init__(self, dataset_path, classic_cache=None, base_cohort=None, seed_missing=True):
+    def __init__(self, dataset_path, classic_cache=None, base_cohort=None, seed_missing=True, code_commit=_UNSET):
         self.path = Path(dataset_path)
         self.classic_cache = classic_cache
         self.base_cohort = Path(base_cohort) if base_cohort else None
@@ -24,13 +36,7 @@ class Application:
         self.lock = Lock()
         self.dataset = None
         self.version = None
-        try:
-            self.commit = subprocess.check_output(
-                ["git", "-c", "safe.directory=" + str(Path(__file__).resolve().parent.parent), "rev-parse", "HEAD"],
-                cwd=Path(__file__).parent.parent, text=True, timeout=3,
-                stderr=subprocess.DEVNULL).strip()
-        except (OSError, subprocess.SubprocessError):
-            self.commit = None
+        self.commit = running_commit() if code_commit is _UNSET else code_commit
         if not self.path.exists():
             if not seed_missing:raise FileNotFoundError('Release dataset missing; refusing example seeding')
             fixtures = Path(__file__).parent.parent / "tests/fixtures"
@@ -76,7 +82,8 @@ class Application:
             if key in self.cohort_cache:
                 self.cohort_cache.move_to_end(key)
                 return self.cohort_cache[key]
-            result=response(get_data(),path,filters)
+            result=(base_cohort.response(self.base_cohort,path,filters) if version[0]=='base'
+                    else response(get_data(),path,filters))
             if path=='/cohort/api/stats' and len(result[0])<=2*1024*1024:
                 self.cohort_cache[key]=result;self.cohort_cache_bytes+=len(result[0])
                 while len(self.cohort_cache)>8 or self.cohort_cache_bytes>16*1024*1024:
@@ -135,6 +142,7 @@ class ReleaseApplication:
     def __init__(self,root,classic_cache=None):
         self.root=Path(root);self.classic_cache=classic_cache;self.lock=Lock()
         self.active=None;self.app=None;self.manifest=None
+        self.work_lock=Lock();self.commit=running_commit()
 
     def __call__(self,environ,start_response):
         from .releases import current,validate
@@ -143,11 +151,13 @@ class ReleaseApplication:
                 path=current(self.root)
                 if path is None:raise ValueError('No validated data release has been published')
                 if path!=self.active:
-                    manifest=validate(path)
-                    if manifest.get('schema_version')!=1:raise ValueError('Unsupported data release')
-                    app=Application(path/'lost-fleet.json',classic_cache=self.classic_cache,
-                                    base_cohort=path/'base.sqlite',seed_missing=False)
-                    self.active,self.app,self.manifest=path,app,manifest
+                    with self.work_lock:
+                        manifest=validate(path)
+                        if manifest.get('schema_version')!=1:raise ValueError('Unsupported data release')
+                        app=Application(path/'lost-fleet.json',classic_cache=self.classic_cache,
+                                        base_cohort=path/'base.sqlite',seed_missing=False,code_commit=self.commit)
+                        app.cohort_lock=self.work_lock
+                        self.active,self.app,self.manifest=path,app,manifest
                 app,manifest=self.app,self.manifest
             # References above keep an in-flight request pinned while another swaps releases.
             if environ.get('PATH_INFO')=='/healthz' and environ.get('REQUEST_METHOD','GET')=='GET':

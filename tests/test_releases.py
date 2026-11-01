@@ -122,6 +122,43 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result['accepted'],1);self.assertEqual(client.exports,['Newest'])
         with sqlite3.connect(self.archive/'archive.sqlite3') as db:self.assertEqual(db.execute('SELECT * FROM scans').fetchall(),before)
 
+    def test_interruption_after_pointer_swap_preserves_published_generation(self):
+        self.publish();self.legacy.write_text(self.legacy.read_text()+' ')
+        from gaia_stats.__main__ import atomic_json
+        def interrupted(path, value):
+            atomic_json(path,value)
+            if path==self.store/'current.json':raise RefreshDeadline('after atomic swap')
+        with patch('gaia_stats.releases.atomic_json',side_effect=interrupted):
+            with self.assertRaises(RefreshDeadline):self.publish()
+        self.assertTrue(current(self.store).is_dir());validate(current(self.store))
+
+    def test_generation_swap_shares_work_lock_and_preserves_worker_commit(self):
+        import threading
+        from gaia_stats.releases import validate as real_validate
+        self.publish()
+        with patch('gaia_stats.wsgi.running_commit',return_value='worker-start') as identity:
+            app=ReleaseApplication(self.store)
+            def request(path):
+                status=[]
+                body=b''.join(app({'REQUEST_METHOD':'GET','PATH_INFO':path,'QUERY_STRING':'ruleset=base'},lambda s,h:status.append(s)))
+                self.assertEqual(status,['200 OK']);return body
+            request('/healthz');first=app.app
+            entered=threading.Event();release=threading.Event();validating=threading.Event()
+            def slow(*args):
+                entered.set();self.assertTrue(release.wait(3));return b'{}','application/json'
+            with patch('gaia_stats.base_cohort.response',side_effect=slow):
+                old=threading.Thread(target=request,args=('/cohort/api/stats',));old.start();self.assertTrue(entered.wait(2))
+                self.legacy.write_text(self.legacy.read_text()+' ');self.publish()
+                def validate_new(path):validating.set();return real_validate(path)
+                with patch('gaia_stats.releases.validate',side_effect=validate_new):
+                    identity.return_value='checkout-changed'
+                    new=threading.Thread(target=request,args=('/healthz',));new.start()
+                    self.assertFalse(validating.wait(.1));release.set();old.join(3);new.join(3)
+                self.assertFalse(old.is_alive());self.assertFalse(new.is_alive())
+            self.assertIs(first.cohort_lock,app.app.cohort_lock)
+            self.assertEqual(json.loads(request('/healthz'))['commit'],'worker-start')
+            identity.assert_called_once()
+
     def test_unchanged_sources_do_not_accumulate_releases(self):
         first=self.publish();before=(self.store/'current.json').read_bytes()
         second=self.publish()

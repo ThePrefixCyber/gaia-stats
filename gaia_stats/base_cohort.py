@@ -90,7 +90,7 @@ def catalog(path):
     with connect(path) as db:return json.loads(db.execute("SELECT value FROM metadata WHERE key='catalog'").fetchone()[0])
 
 
-def dataset(path,filters):
+def iter_rows(path,filters):
     clauses=[];params=[]
     for key in ('player_count','faction','layout','auction','faction_variant'):
         if filters.get(key):clauses.append(key+' = ?');params.append(filters[key])
@@ -99,9 +99,38 @@ def dataset(path,filters):
         if value is None:raise ValueError('Pregame Elo minimum must be finite')
         clauses.append('elo >= ?');params.append(value)
     sql='SELECT payload FROM observations'+(' WHERE '+' AND '.join(clauses) if clauses else '')+' ORDER BY game_id,faction'
-    with connect(path) as db:
-        rows=[json.loads(record[0]) for record in db.execute(sql,params)]
-    return {'schema_version':1,'rows':rows,'scope':'Historical base CSV cohort; dropped games excluded; unknown variant values remain unknown'}
+    from contextlib import closing
+    with closing(connect(path)) as db:
+        for record in db.execute(sql,params):
+            yield json.loads(record[0])
+
+
+SCOPE = 'Historical base CSV cohort; dropped games excluded; unknown variant values remain unknown'
+
+
+def batches(path, filters, size=1024):
+    if not 1 <= size <= 1900:raise ValueError('Batch size must fit exact raw-value summaries')
+    batch=[]
+    for row in iter_rows(path, filters):
+        if len(batch)>=size and row['game_id']!=batch[-1]['game_id']:
+            yield batch
+            batch=[]
+        batch.append(row)
+    if batch:yield batch
+
+
+def dataset(path,filters):
+    return {'schema_version':1,'rows':list(iter_rows(path,filters)),'scope':SCOPE}
+
+
+def response(path, route, filters):
+    from . import streaming_cohort
+    if route=='/cohort/api/stats':
+        result=streaming_cohort.statistics(batches(path,filters),filters,SCOPE)
+        return json.dumps(result,allow_nan=False).encode(),'application/json'
+    if route=='/cohort/api/export':
+        return streaming_cohort.csv_export(batches(path,filters),filters),'text/csv; charset=utf-8'
+    raise FileNotFoundError(route)
 
 
 if __name__=='__main__':

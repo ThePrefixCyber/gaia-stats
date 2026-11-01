@@ -162,7 +162,12 @@ def publish(root,seed_base,archive,legacy=None,*,dry_run=False):
         if not dry_run:atomic_json(root/'current.json',{'release':stage.name})
         return manifest
     except BaseException:
-        shutil.rmtree(stage)
+        # The atomic swap may have completed immediately before an interruption.
+        # If its outcome cannot be read, retain the candidate rather than risk a
+        # dangling live pointer. Unreferenced candidates can be inspected later.
+        try: published = current(root) == stage
+        except BaseException: published = True
+        if not published:shutil.rmtree(stage)
         raise
 
 
