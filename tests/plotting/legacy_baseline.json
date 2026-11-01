@@ -1,0 +1,54 @@
+{
+  "origin": "TimGladyshev/bgs_data_gaia@1c4cf35fa3599ed3d29ac9f7f36cfb5d0484261e; unmodified function bodies; committed CSV",
+  "inputs": {
+    "advanced_techs.ipynb": "5da32646276a1cea4fc660b6039f596e9ed1096c63db3579ef3421870a9790a6",
+    "basic_tech.ipynb": "73502d8e02d6449f991039fa15ef59bd76da9f266b7f2f3f2eb4026e922ced6d",
+    "data/remote_four_players_data.csv": "32d360bcc0e4896bba27ff6e936530274d18759abd33b2fcfac133b533e35432",
+    "final_scorings_deltas.ipynb": "13e7e53095131c6e20c691cf224fb8f71e14339c01f911daede70ecbc0d9c665",
+    "r1_structs.ipynb": "26033fbee41501dab247f94bc5f23b97618656304a06d3c08592b7e06e21775e",
+    "round_scoring.ipynb": "897965e5bd2b8552b977ef2b286ca4e5f7400770455d4c8eb3dca2ad872efb50",
+    "scoring_methods.ipynb": "cc7b119a9bbb166fa17e859d4e40ed1d4011e220880b4e69a8627a4cf98061da"
+  },
+  "terrans": {
+    "basic-tech-frequency": {
+      "sha256": "80b84eedf7eefd7d9397081dbd4cb47e8d768add38788574bab9e969ef045e95",
+      "traces": 4,
+      "title": "Frequency Basic Tech Tile is Taken and the Resulting Rank Distribution: terrans"
+    },
+    "basic-tech-score": {
+      "sha256": "46280789ba24bde21c398d648e2fdd03afa03bbb6f1632a1daa29fbd25d9d17b",
+      "traces": 8,
+      "title": "Basic Tech Impact on Average Score by Track Taken: terrans (no dropped players, bid added)"
+    },
+    "advanced-tech-frequency": {
+      "sha256": "7beec890034e988888e6bc7605ff066ef149a90c18e15df56052dfc191cc5eb6",
+      "traces": 4,
+      "title": "Frequency Advanced Tech Tile is Taken and the Resulting Rank Distribution: terrans"
+    },
+    "advanced-tech-score": {
+      "sha256": "bf91da39fc85757448c1b86da1cc9778d015bcf100e954855acdfe1ce47bb0eb",
+      "traces": 8,
+      "title": "Adv-Tech Impact on Score by Track: terrans (score > 130, no dropped players, bid added)"
+    },
+    "round-one-structures": {
+      "sha256": "c66bd5d97f5334e7bb8f46176f0f99418c6e8d2aa6eff2290466f13af04e1ec3",
+      "traces": 1,
+      "title": "R1 Structures: Frequency and Impact on Score Relative to All Factions Average (153.4): terrans"
+    },
+    "round-scoring": {
+      "sha256": "0a571446145a1cdab99399a72bd2ccef4708ccd2bb31ae6151e41290653ce7bf",
+      "traces": 2,
+      "title": "Round scoring preferences for terrans. Best round scoring combination average: 39.5"
+    },
+    "final-scoring": {
+      "sha256": "b8f19cf158fb0e6e3277f6a056d31cf7381cf6dd3976c5f46e9641723f8c26f1",
+      "traces": 2,
+      "title": "Final scoring combination preferences for : terrans"
+    },
+    "point-sources": {
+      "sha256": "f0a9900ba05458d6b13d9173995420c8586e601409c4aa3feb842b1fe64862b8",
+      "traces": 4,
+      "title": "Point source breakdown for points made : terrans"
+    }
+  }
+}

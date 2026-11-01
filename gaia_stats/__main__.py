@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from .analysis import normalize, select, summarize, skill_context
+from .analysis import normalize, select, summarize, skill_context, qic_mode, variant_included
 
 
 def atomic_json(path, payload):
@@ -86,7 +86,8 @@ def response_for(dataset, path, filters):
             body, content_type = encode_csv(rows), "text/csv; charset=utf-8"
         else:
             # Choices are scoped to the active ruleset, independent of narrower filters.
-            cohort = select(dataset["rows"], {"ruleset": filters["ruleset"]})
+            cohort = select(dataset["rows"], {"ruleset": filters["ruleset"],
+                    "lf_2p_4qic_mode": qic_mode(filters)})
             options = {key: sorted({row[key] for row in cohort}, key=str) for key in (
                 "faction", "player_count", "layout", "auction", "faction_variant",
                 "faction_variant_version", "official_center_sectors")}
@@ -97,6 +98,10 @@ def response_for(dataset, path, filters):
                 options[f"round{i+1}"] = sorted({r["round_scorings"][i] for r in cohort})
             body = json.dumps({"ruleset": filters["ruleset"], "options": options,
                                "skill": skill_context(dataset["rows"], filters),
+                               "variant_filter": {"mode": qic_mode(filters),
+                                   "excluded_records_before_other_filters": sum(
+                                       r["ruleset"] == filters["ruleset"] and r["score_verified"]
+                                       and not variant_included(r, filters) for r in dataset["rows"])},
                                "games": len({r["game_id"] for r in rows}),
                                "player_records": len(rows), "groups": summarize(rows),
                                "rows": rows, "rejected_games": len(dataset["rejected"])}).encode()

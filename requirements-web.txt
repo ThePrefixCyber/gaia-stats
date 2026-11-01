@@ -1,2 +1,5 @@
 # Independent of the historical notebook environment in requirements.txt.
 gunicorn>=23.0.0,<24
+
+# Original figure regression tests are part of the deployment gate.
+-r requirements-plotting.txt

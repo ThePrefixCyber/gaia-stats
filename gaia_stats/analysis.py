@@ -25,12 +25,47 @@ def ruleset(game):
     return "lost-fleet" if True in flags or "lost-fleet" in expansions else "base"
 
 
+QIC_MODES = ('standard-only', 'include-both', 'variant-only')
+
+
+def lost_fleet_qic_option(game):
+    """Retain observed metadata separately from BGS's documented false default."""
+    observed = {source: options['lostFleet2pQicTech'] for source, options in (
+        ('game.options', game.get('game', {}).get('options', {})),
+        ('data.options', game.get('data', {}).get('options', {})))
+        if 'lostFleet2pQicTech' in options}
+    values = list(observed.values())
+    if any(type(value) is not bool for value in values):
+        raise ValueError('Invalid lostFleet2pQicTech flag')
+    if len(set(values)) > 1:
+        raise ValueError('Conflicting lostFleet2pQicTech flags')
+    return (values[0] if values else None), observed
+
+
+def qic_mode(filters):
+    mode = filters.get('lf_2p_4qic_mode', 'standard-only')
+    if mode not in QIC_MODES:
+        raise ValueError('Choose standard-only, include-both or variant-only for LF 4-QIC')
+    return mode
+
+
+def variant_included(row, filters):
+    mode = qic_mode(filters)
+    if row['ruleset'] != 'lost-fleet':
+        return True  # Original base behavior is unaffected.
+    variant = row['player_count'] == 2 and row.get('lf_2p_4qic_effective', False) is True
+    return mode == 'include-both' or (variant if mode == 'variant-only' else not variant)
+
+
 def normalize(game):
     if game.get("status") != "ended" or game.get("cancelled"):
         raise ValueError("Game is not a completed, uncancelled game")
     version = ruleset(game)
+    qic_observed, qic_sources = lost_fleet_qic_option(game)
     data = game["data"]
     players = game["players"]
+    if qic_observed is True and (version != "lost-fleet" or len(players) != 2):
+        raise ValueError("lostFleet2pQicTech is only valid for two-player Lost Fleet")
     states = data["players"]
     if len(players) < 2 or any(p.get("isAutoma") for p in states):
         raise ValueError("Solo and Automa games are excluded")
@@ -90,6 +125,9 @@ def normalize(game):
         opponents = [p.get("elo", {}).get("initial") for i, p in enumerate(players) if i != pos]
         rows.append({
             "game_id": game.get("slug") or game.get("_id"), "ruleset": version,
+            "lf_2p_4qic_observed": qic_observed,
+            "lf_2p_4qic_effective": qic_observed if qic_observed is not None else False,
+            "lf_2p_4qic_sources": qic_sources,
             "faction": player["faction"], "player_count": len(players),
             "opponents": sorted(p["faction"] for i, p in enumerate(players) if i != pos),
             "score": player["score"], "rank": 1 + sum(s > player["score"] for s in scores),
@@ -123,6 +161,7 @@ def skill_context(rows, filters):
     The unit is a player-game observation's pregame Elo, not unique people or
     current ratings. Each player count has its own threshold within a ruleset.
     """
+    rows = [row for row in rows if variant_included(row, filters)]
     mode = filters.get("skill", "custom" if filters.get("min_elo") else "all")
     if mode not in ("all", "top", "custom"):
         raise ValueError("Choose all, top, or custom player skill")
@@ -152,6 +191,7 @@ def skill_context(rows, filters):
         elif mode == "custom":
             thresholds[count] = minimum
     return {"mode": mode, "thresholds": thresholds, "rated_counts": rated_counts,
+            "lf_2p_4qic_mode": qic_mode(filters),
             "basis": "Pregame Elo per player-game record; top 10% within each ruleset and player count. Ties included."}
 
 
@@ -167,7 +207,7 @@ def select(rows, filters):
             raise ValueError("Table Elo cutoff must be finite")
     result = []
     for row in rows:
-        if row["ruleset"] != version or not row["score_verified"]:
+        if row["ruleset"] != version or not row["score_verified"] or not variant_included(row, filters):
             continue
         if any((str(row[key]).lower() if isinstance(row[key], bool) else str(row[key]))
                != str(filters[key]) for key in (
@@ -202,6 +242,7 @@ def summarize(rows, minimum=5):
         key = tuple(row[k] for k in ("ruleset", "faction", "player_count", "layout", "auction",
                                     "faction_variant", "faction_variant_version",
                                     "official_center_sectors", "build_order"))
+        key += (row.get("lf_2p_4qic_effective", False),)
         groups[key].append(row)
     result = []
     for group in groups.values():
@@ -210,6 +251,7 @@ def summarize(rows, minimum=5):
             **{k: first[k] for k in ("faction", "player_count", "layout", "auction",
                                     "faction_variant", "faction_variant_version",
                                     "official_center_sectors", "build_order")},
+            "lf_2p_4qic_effective": first.get("lf_2p_4qic_effective", False),
             "samples": len(group), "games": len({r["game_id"] for r in group}),
             "average_score": mean(r["score"] for r in group),
             "win_share": mean(r["win_share"] for r in group),

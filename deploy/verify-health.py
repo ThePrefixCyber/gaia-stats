@@ -13,7 +13,7 @@ def verify(expected, fetch):
             raise ValueError('Health does not report the expected running commit')
         total_games = total_records = 0
         for ruleset in ('base', 'lost-fleet'):
-            result = fetch(base + '/api/analysis?ruleset=' + ruleset)
+            result = fetch(base + '/api/analysis?lf_2p_4qic_mode=include-both&ruleset=' + ruleset)
             rows = result['rows']
             games = len({row['game_id'] for row in rows})
             if (result['ruleset'] != ruleset

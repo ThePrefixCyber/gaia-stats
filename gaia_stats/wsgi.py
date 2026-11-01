@@ -7,11 +7,13 @@ from threading import Lock
 from urllib.parse import parse_qs
 
 from .__main__ import ingest, response_for
+from .legacy_cache import is_classic_path
 
 
 class Application:
-    def __init__(self, dataset_path):
+    def __init__(self, dataset_path, classic_cache=None):
         self.path = Path(dataset_path)
+        self.classic_cache = classic_cache
         self.lock = Lock()
         self.dataset = None
         self.version = None
@@ -45,6 +47,11 @@ class Application:
             if environ.get("REQUEST_METHOD") != "GET":
                 status, body, content_type = "405 Method Not Allowed", b"GET only", "text/plain"
                 headers.append(("Allow", "GET"))
+            elif self.classic_cache is not None and is_classic_path(path):
+                from .legacy_cache import cache_response
+                body, content_type, download = cache_response(self.classic_cache, path, filters)
+                if download:
+                    headers.append(("Content-Disposition", f'attachment; filename="{download}"'))
             elif path == "/healthz":
                 dataset = self.load()
                 deployment = None
@@ -72,4 +79,5 @@ class Application:
 
 
 def create_app():
-    return Application(os.environ.get("GAIA_DATASET", "data/analysis.json"))
+    return Application(os.environ.get("GAIA_DATASET", "data/analysis.json"),
+                       classic_cache=os.environ.get("GAIA_CLASSIC_CACHE"))
