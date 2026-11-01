@@ -1,7 +1,9 @@
 """Production WSGI entry point; read-only HTTP, disk-backed dataset with hot reload."""
 import json
+import datetime
 import os
 import subprocess
+import sqlite3
 from pathlib import Path
 from threading import Lock
 from collections import OrderedDict
@@ -12,7 +14,7 @@ from .legacy_cache import is_classic_path
 
 
 class Application:
-    def __init__(self, dataset_path, classic_cache=None, base_cohort=None):
+    def __init__(self, dataset_path, classic_cache=None, base_cohort=None, seed_missing=True):
         self.path = Path(dataset_path)
         self.classic_cache = classic_cache
         self.base_cohort = Path(base_cohort) if base_cohort else None
@@ -30,6 +32,7 @@ class Application:
         except (OSError, subprocess.SubprocessError):
             self.commit = None
         if not self.path.exists():
+            if not seed_missing:raise FileNotFoundError('Release dataset missing; refusing example seeding')
             fixtures = Path(__file__).parent.parent / "tests/fixtures"
             ingest(sorted(fixtures.glob("*.json")), self.path)
 
@@ -117,6 +120,8 @@ class Application:
                     headers.append(("Content-Disposition", f'attachment; filename="gaia-{filters["ruleset"]}.csv"'))
         except FileNotFoundError:
             status, body, content_type = "404 Not Found", b"Not found", "text/plain"
+        except sqlite3.Error as exc:
+            status, body, content_type = '503 Service Unavailable', json.dumps({'error':'Cohort database unavailable: '+str(exc)}).encode(), 'application/json'
         except (ValueError, KeyError) as exc:
             status, body, content_type = "400 Bad Request", json.dumps({"error": str(exc)}).encode(), "application/json"
         headers.extend([("Content-Type", content_type), ("Content-Length", str(len(body))),
@@ -125,7 +130,56 @@ class Application:
         return [body]
 
 
+class ReleaseApplication:
+    """Pin each request to one immutable release; discard old response caches on swap."""
+    def __init__(self,root,classic_cache=None):
+        self.root=Path(root);self.classic_cache=classic_cache;self.lock=Lock()
+        self.active=None;self.app=None;self.manifest=None
+
+    def __call__(self,environ,start_response):
+        from .releases import current,validate
+        try:
+            with self.lock:
+                path=current(self.root)
+                if path is None:raise ValueError('No validated data release has been published')
+                if path!=self.active:
+                    manifest=validate(path)
+                    if manifest.get('schema_version')!=1:raise ValueError('Unsupported data release')
+                    app=Application(path/'lost-fleet.json',classic_cache=self.classic_cache,
+                                    base_cohort=path/'base.sqlite',seed_missing=False)
+                    self.active,self.app,self.manifest=path,app,manifest
+                app,manifest=self.app,self.manifest
+            # References above keep an in-flight request pinned while another swaps releases.
+            if environ.get('PATH_INFO')=='/healthz' and environ.get('REQUEST_METHOD','GET')=='GET':
+                try:freshness=json.loads((self.root/'refresh-status.json').read_text())
+                except FileNotFoundError:freshness={'state':'never-run','last_success':None}
+                now=datetime.datetime.now(datetime.timezone.utc)
+                def age(value):
+                    try:return max(0,(now-datetime.datetime.fromisoformat(value)).total_seconds())
+                    except (TypeError,ValueError):return None
+                success_age=age(freshness.get('last_success'))
+                freshness['last_success_age_seconds']=success_age
+                freshness['stale']=success_age is None or success_age>3600
+                running_age=age(freshness.get('started_at'))
+                if freshness.get('state')=='running' and running_age is not None and running_age>900:
+                    freshness.update(state='interrupted-or-timed-out',error='Refresh has no completion within its runtime bound')
+                body=json.dumps({'status':'ok','commit':app.commit,'release':manifest['release'],
+                    'datasets':manifest['datasets'],'raw_accepted_games':manifest['raw_accepted_games'],
+                    'coverage':manifest['coverage'],'data_created_at':manifest['created_at'],'refresh':freshness,
+                    'games':sum(v['games'] for v in manifest['datasets'].values()),
+                    'player_records':sum(v['records'] for v in manifest['datasets'].values())}).encode()
+                start_response('200 OK',[('Content-Type','application/json'),('Cache-Control','no-store'),('Content-Length',str(len(body)))])
+                return [body]
+            return app(environ,start_response)
+        except (OSError,ValueError,KeyError,sqlite3.Error) as error:
+            body=json.dumps({'status':'unavailable','error':str(error)}).encode()
+            start_response('503 Service Unavailable',[('Content-Type','application/json'),('Cache-Control','no-store')])
+            return [body]
+
+
 def create_app():
+    if os.environ.get('GAIA_RELEASE_ROOT'):
+        return ReleaseApplication(os.environ['GAIA_RELEASE_ROOT'],os.environ.get('GAIA_CLASSIC_CACHE'))
     return Application(os.environ.get("GAIA_DATASET", "data/analysis.json"),
                        classic_cache=os.environ.get("GAIA_CLASSIC_CACHE"),
                        base_cohort=os.environ.get("GAIA_BASE_COHORT"))

@@ -11,6 +11,16 @@ def verify(expected, fetch):
         health = fetch(base + '/healthz')
         if health.get('status') != 'ok' or health.get('commit') != expected:
             raise ValueError('Health does not report the expected running commit')
+        if 'datasets' in health:
+            root=fetch(base+'/')
+            asset=fetch(base+'/classic/assets/plotly.min.js')
+            if not isinstance(root,str) or 'id="mode"' not in root or not isinstance(asset,str) or len(asset)<100000:
+                raise ValueError('Rebuilt root or Plotly asset is unavailable')
+            for mode in ('base','lost-fleet'):
+                result=fetch(base+'/cohort/api/stats?ruleset='+mode+'&lf_2p_4qic_mode=include-both&plot=point-sources')
+                if result['ruleset']!=mode or result['games']!=health['datasets'][mode]['games'] or result['samples']!=health['datasets'][mode]['records']:
+                    raise ValueError('Release mode counts disagree with health')
+            continue
         total_games = total_records = 0
         for ruleset in ('base', 'lost-fleet'):
             result = fetch(base + '/api/analysis?lf_2p_4qic_mode=include-both&ruleset=' + ruleset)
@@ -28,8 +38,11 @@ def verify(expected, fetch):
 
 
 def fetch(url):
-    with urlopen(url, timeout=5) as response:
-        return json.load(response)
+    with urlopen(url, timeout=90) as response:
+        raw=response.read()
+        if 'application/json' in response.headers.get('Content-Type',''):
+            return json.loads(raw)
+        return raw.decode()
 
 
 if __name__ == '__main__':

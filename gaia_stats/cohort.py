@@ -62,11 +62,20 @@ def enrich(game, rows):
 
 def build(paths, destination):
     rows, accepted, rejected = [], [], []
+    seen = {}
     for path in sorted(map(Path, paths)):
         raw = path.read_bytes()
         provenance = {'file': path.name, 'sha256': hashlib.sha256(raw).hexdigest()}
         try:
             game = json.loads(raw)
+            identifier=game.get('slug') or game.get('_id')
+            canonical=hashlib.sha256(json.dumps(game,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            if not identifier:raise ValueError('Missing game identifier')
+            if identifier in seen:
+                if seen[identifier]!=canonical:raise RuntimeError('Conflicting duplicate export: '+identifier)
+                rejected.append({**provenance,'reason':'Duplicate game identifier; identical export skipped'})
+                continue
+            seen[identifier]=canonical
             candidate = enrich(game, normalize(game))
             if not all(r['score_verified'] for r in candidate):
                 raise ValueError('VP ledger does not reconcile')
@@ -78,6 +87,7 @@ def build(paths, destination):
             rejected.append({**provenance, 'reason': str(error)})
     dataset = {'schema_version': 1, 'rows': rows, 'accepted': accepted, 'rejected': rejected,
                'scope': 'Bounded public Lost Fleet sample; not a representative archive'}
+    if not rows:raise ValueError('No accepted complete games; existing dataset preserved')
     atomic_json(destination, dataset)
     return dataset
 

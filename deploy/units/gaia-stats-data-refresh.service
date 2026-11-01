@@ -1,0 +1,22 @@
+[Unit]
+Description=Bounded Gaia Stats archive refresh and atomic data publication
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=gaia-stats
+Group=gaia-stats
+WorkingDirectory=/opt/gaia-stats
+ExecStart=/opt/gaia-stats/.venv/bin/python -m gaia_stats.refresh --root /var/lib/gaia-stats/releases-store --seed-base /var/lib/gaia-stats/seeds/base.sqlite --archive /var/lib/gaia-stats/archive --legacy /var/lib/gaia-stats/analysis.json --max-pages 20 --max-downloads 100 --max-seconds 720
+TimeoutStartSec=13min
+MemoryHigh=256M
+MemoryMax=512M
+CPUQuota=50%
+Nice=10
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gaia-stats

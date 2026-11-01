@@ -128,7 +128,7 @@ def archive_lock(directory):
 
 
 def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
-            max_downloads=100, overlap_pages=2, now=None):
+            max_downloads=100, overlap_pages=2, now=None, head_only=False):
     """Checkpoint bounded discovery and downloads, retaining raw/quarantined data.
 
     Offset resumes overlap prior pages to tolerate new entries. No early-stop
@@ -162,9 +162,10 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                 return summary
             blocked = False
             row = db.execute('SELECT cursor,complete FROM scans WHERE mode=?', (mode,)).fetchone()
-            cursor = row[0] if row and not row[1] else 0
+            cursor = row[0] if row and not row[1] and not head_only else 0
             # Ensure small run budgets still advance beyond their overlap.
             offset = max(0, cursor - min(overlap_pages, max_pages - 1) * page_size)
+            seen_in_scan = []
             for _ in range(max_pages):
                 query = {'count': page_size, 'skip': offset, 'boardgame': 'gaia-project'}
                 if mode == 'lost-fleet':
@@ -189,19 +190,26 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                     except ValueError as error:
                         db.execute('INSERT INTO events VALUES (?,?,?)', (mode, now(), str(error)))
                         continue
+                    seen_in_scan.append(slug)
                     result = db.execute('INSERT OR IGNORE INTO exports(mode,slug,status) VALUES (?,?,?)',
                                         (mode, slug, 'pending'))
                     summary['queued'] += result.rowcount
                 offset += len(entries)
                 complete = int(len(entries) < page_size)
-                db.execute('INSERT OR REPLACE INTO scans VALUES (?,?,?)', (mode, offset, complete))
+                if not head_only:
+                    db.execute('INSERT OR REPLACE INTO scans VALUES (?,?,?)', (mode, offset, complete))
                 db.commit()  # Queue and checkpoint commit together, before network downloads.
                 summary['pages'] += 1
                 if complete:
                     break
-            queue = db.execute('''SELECT slug,attempts FROM exports WHERE mode=?
-                AND status IN ('pending','retry') AND retry_at<=? ORDER BY rowid LIMIT ?''',
-                (mode, now(), 0 if blocked else max_downloads)).fetchall()
+            scope = ''
+            parameters = [mode, now()]
+            if head_only:
+                scope = ' AND slug IN (' + ','.join('?' for _ in seen_in_scan) + ')' if seen_in_scan else ' AND 0'
+                parameters.extend(seen_in_scan)
+            queue = db.execute("SELECT slug,attempts FROM exports WHERE mode=? "
+                "AND status IN ('pending','retry') AND retry_at<=?" + scope + ' ORDER BY rowid LIMIT ?',
+                parameters + [0 if blocked else max_downloads]).fetchall()
             for slug, attempts in queue:
                 url = ORIGIN + '/api/gameplay/' + slug
                 fetched_at = datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).isoformat()

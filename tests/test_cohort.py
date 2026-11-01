@@ -20,7 +20,7 @@ def load(path):
 class CohortTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.games = [load(FIXTURES / 'jubilant-rover-3041.json')]
+        cls.games = [load(FIXTURES / 'Jubilant-rover-3041.json')]
         cls.games += [load(FIXTURES / 'cohort' / name) for name in
                       ('Admirable-falcon-401.json', 'Eclipsed-council-7948.json')]
         cls.rows = [r for g in cls.games for r in enrich(g, normalize(g))]
@@ -44,7 +44,7 @@ class CohortTests(unittest.TestCase):
         self.assertIn({'tile':'tech2','slot':'nav'}, row['owned_technologies'])
 
     def test_default_variant_and_mode_isolation(self):
-        base = normalize(load(FIXTURES / 'modern-riddle-1723.json'))
+        base = normalize(load(FIXTURES / 'Modern-riddle-1723.json'))
         data = {'rows': self.rows + base}
         standard = report(data, {'ruleset':'lost-fleet'})
         both = report(data, {'ruleset':'lost-fleet','lf_2p_4qic_mode':'include-both'})
