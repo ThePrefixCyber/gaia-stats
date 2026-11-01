@@ -50,28 +50,75 @@ outside this VPS. The optional Render configuration below is an alternative.
 
 ### Manage updates from GitHub without inbound SSH from the agent
 
-After the initial install, optionally enable a systemd deployment timer:
+After the initial install, optionally enable a systemd deployment timer. Perform
+this bootstrap in your existing working VPS SSH session; it is not a command for
+a development checkout. First inspect the running service and timer, record the
+current commit and per-ruleset counts, and back up `/var/lib/gaia-stats` outside
+the VPS. Stop any existing timer and allow an active update service to finish
+before pulling code. Keep the old commit ID for manual recovery: bootstrap cannot
+recover a pre-pull commit automatically.
 
 ```bash
 cd /opt/gaia-stats
+sudo systemctl stop gaia-stats-update.timer  # if already installed
+sudo systemctl status gaia-stats-update.service --no-pager
+# Continue only once no updater is running; never edit a dirty live checkout.
+sudo git status --short
+sudo git rev-parse HEAD
 sudo git pull --ff-only
 sudo bash deploy/enable-updates.sh
 ```
 
-The VPS then checks `main` every two minutes, installs updated web dependencies,
-runs tests under the app account and restarts the service. Failed deployments
-attempt to restore the previous code/dependencies. This is a simple single-server
-deployment, with a brief restart, not a zero-downtime release system. It refuses
-tracked local edits and rewritten/non-fast-forward history. Commit application
-changes through GitHub; disable the timer before editing the deployed checkout.
-Only grant repository write access to people trusted to deploy application code.
+Bootstrap installs dependencies, runs tests under the app account, restarts the
+app, and verifies its expected commit and both rulesets through Gunicorn and
+Nginx, even when the checkout already equals GitHub main. Polling is enabled only
+after this succeeds. A failed bootstrap leaves polling stopped and needs operator
+attention; it may already have changed dependencies or restarted the app.
 
-`/healthz` exposes the deployed commit, record counts and last updater result
-without logs or credentials, so the agent can verify updates through HTTP.
-Detailed updater logs stay on the server:
-`sudo journalctl -u gaia-stats-update -n 80 --no-pager`.
-Disable polling with `sudo systemctl disable --now gaia-stats-update.timer`.
-This does not grant an interactive remote shell to ChatGPT.
+The VPS then checks `main` every two minutes. Updates require clean tracked files
+and fast-forward history. A lock serializes bootstrap, timer and manual updater
+runs. On unchanged code, the updater still verifies the running commit and both
+rulesets, without restarting. It refuses a missing or empty production dataset
+rather than letting an update silently seed examples.
+
+Failed code updates attempt to restore the previous commit, reinstall its web
+dependencies, restart, and verify the previous running commit. `rolled-back`
+means those checks succeeded; `rollback-failed` means recovery is unconfirmed
+and needs operator attention. The process always exits unsuccessfully after a
+failed deployment, including a verified rollback. Recovery to old code without
+commit/count health metadata cannot be verified and reports `rollback-failed`.
+Dependencies share one virtual environment and version ranges are not a lockfile:
+rollback is best effort, not an exact environment restore. This is a single-server
+restart deployment with brief downtime. A broken target can be retried on the
+next poll; stop the timer while investigating repeated failures.
+
+`/healthz` exposes the running commit, record counts and last updater result,
+including its check time and previous/target commits. These are public non-secret
+metadata. Confirm the initial result is `bootstrap-verified` (or `deployed` if
+main advanced), then verify:
+
+```bash
+sudo systemctl is-enabled gaia-stats-update.timer
+sudo systemctl is-active gaia-stats-update.timer
+sudo systemctl list-timers --all gaia-stats-update.timer --no-pager
+sudo journalctl -u gaia-stats-update -n 80 --no-pager
+curl -fsS http://127.0.0.1/healthz
+curl -fsS 'http://127.0.0.1/api/analysis?ruleset=base'
+curl -fsS 'http://127.0.0.1/api/analysis?ruleset=lost-fleet'
+```
+
+Compare data hashes/counts with the pre-deployment snapshot and verify the public
+HTTP endpoint as well. After a subsequent poll, `checked_at` should advance and
+state should be `up-to-date`. A complete automatic deployment is established only
+when a later approved commit is fetched, tested and observed running at its exact
+SHA; an unchanged-code check alone is not proof of that cycle.
+
+Commit application changes through GitHub; disable polling before editing the
+live checkout. Only grant repository write access to people trusted to deploy
+application code. Disable polling with
+`sudo systemctl disable --now gaia-stats-update.timer`; this does not stop an
+already running update service, so wait for it to finish before manual changes.
+The timer neither collects games nor grants an interactive shell to ChatGPT.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ThePrefixCyber/gaia-stats)
 

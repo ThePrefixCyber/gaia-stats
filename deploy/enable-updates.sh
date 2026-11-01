@@ -32,7 +32,8 @@ WantedBy=timers.target
 TIMER
 
 systemctl daemon-reload
+# Leave polling stopped if bootstrap validation fails.
+systemctl stop gaia-stats-update.timer
+bash /opt/gaia-stats/deploy/update-vps.sh --bootstrap
 systemctl enable --now gaia-stats-update.timer
-systemctl start gaia-stats-update.service
-systemctl restart gaia-stats
 echo 'Automatic updates enabled. Status: systemctl status gaia-stats-update.timer'

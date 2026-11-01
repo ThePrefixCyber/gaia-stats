@@ -30,7 +30,9 @@ changing; investigate the agent's network path before asking for firewall edits.
 An optional GitHub-polling deploy timer is included in `deploy/enable-updates.sh`.
 It is **not confirmed enabled on the server**. Its README instructions are the
 one-time bootstrap. It pulls main every two minutes, tests/restarts the app,
-attempts code rollback on failure and writes a public non-secret deploy status.
+attempts verified code rollback on failure and writes a public non-secret deploy status.
+Bootstrap validates tests and running commit before enabling polling; unchanged
+checks validate health too. Shared-venv rollback remains best effort; see README.
 It grants no interactive shell. GitHub Actions settings/secrets APIs returned
 403 for this connection, so do not assume Actions administration is available.
 
@@ -46,7 +48,7 @@ It grants no interactive shell. GitHub Actions settings/secrets APIs returned
   opening comparisons, original moves and VP sources.
 - `deploy/`: fresh VPS install, explicit game imports, optional polling deployer.
 - `render.yaml`: alternative paid Render deployment, not used/activated.
-- 22 Python tests cover real exports and production request/reload behavior.
+- 33 Python tests cover real exports and production request/reload behavior and updater failure paths.
   Run `python -m unittest discover -s tests -v`.
 
 Skill modes: All (including unrated), Top (90th percentile of pregame player-game
