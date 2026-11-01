@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: gaia-stats
+    runtime: python
+    plan: starter
+    branch: main
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: gunicorn 'gaia_stats.wsgi:create_app()' --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 60
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: GAIA_DATASET
+        value: /var/data/gaia/analysis.json
+    disk:
+      name: gaia-data
+      mountPath: /var/data/gaia
+      sizeGB: 1

@@ -1,0 +1,35 @@
+"""Small, deliberate BGS downloads. Archive discovery/scheduling is a separate job."""
+import json
+from pathlib import Path
+import re
+import time
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+from .analysis import normalize
+from .__main__ import atomic_json
+
+
+def fetch_games(slugs, directory):
+    failures = 0
+    for index, slug in enumerate(dict.fromkeys(slugs)):
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,120}", slug):
+            print(f"Rejected invalid game slug: {slug!r}")
+            failures += 1
+            continue
+        if index:
+            time.sleep(1)
+        try:
+            request = Request("https://www.boardgamers.space/api/gameplay/" + slug,
+                              headers={"User-Agent": "GaiaStats/0.1 (+https://github.com/ThePrefixCyber/gaia-stats)"})
+            with urlopen(request, timeout=30) as response:
+                game = json.load(response)
+            rows = normalize(game)
+            if any(not r["score_verified"] for r in rows):
+                raise ValueError("VP ledger mismatch")
+            atomic_json(Path(directory) / (slug + ".json"), game)
+            print(f"Saved {slug}: {rows[0]['ruleset']}, {len(rows)} players")
+        except (URLError, TimeoutError, ValueError, KeyError, TypeError, IndexError) as exc:
+            print(f"Skipped {slug}: {exc}")
+            failures += 1
+    return failures

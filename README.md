@@ -1,5 +1,97 @@
 # Gaia Stats
 
+## Deploy on your Ubuntu VPS
+
+For a fresh Ubuntu 24.04 VPS, run these commands in its SSH session:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+sudo git clone https://github.com/ThePrefixCyber/gaia-stats.git /opt/gaia-stats
+sudo bash /opt/gaia-stats/deploy/install-vps.sh
+```
+
+The installer creates a restricted `gaia-stats` service account, installs the small
+web dependency set in a virtual environment, configures Gunicorn with systemd,
+and serves the app through Nginx on port 80. It permits SSH and HTTP/HTTPS before
+enabling UFW. A Vultr firewall, if attached, must also allow inbound TCP 80/443
+and your SSH access. It disables Ubuntu's default Nginx site symlink, not other
+site configurations. Review `deploy/install-vps.sh` before running on a VPS that
+already hosts other applications.
+
+Open `http://YOUR_SERVER_IP/`. The service starts on boot and survives SSH
+disconnects. The initial dataset contains only four verified examples. The
+dataset and raw imports live in `/var/lib/gaia-stats`, outside the Git checkout,
+and are preserved during code updates. Add a domain and HTTPS before adding
+login credentials or private features; the initial explorer is public/read-only.
+
+Pull additional finished games by their BGS slug:
+
+```bash
+sudo bash /opt/gaia-stats/deploy/pull-games.sh Jubilant-rover-3041 Comfy-snail-3333
+```
+
+Refresh the browser after importing; the dataset reloads automatically. Downloads
+are paced and game IDs are deduplicated during import. Archive-wide discovery and
+automatic scheduling remain future work.
+
+Update code and restart without replacing data:
+
+```bash
+cd /opt/gaia-stats
+sudo git pull --ff-only
+sudo .venv/bin/pip install -r requirements-web.txt
+sudo systemctl restart gaia-stats
+```
+
+Diagnostics: `sudo journalctl -u gaia-stats -n 50 --no-pager` and
+`sudo systemctl status gaia-stats --no-pager`. Back up `/var/lib/gaia-stats`
+outside this VPS. The optional Render configuration below is an alternative.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ThePrefixCyber/gaia-stats)
+
+## Persistent browser deployment
+
+Click **Deploy to Render**, sign in, authorize this repository and review the
+Blueprint. It creates one paid always-on Python web service and a 1 GB persistent
+disk. At the rates checked on 2026-11-01 this is about **$7.25/month**, before
+additional usage or taxes; review Render's displayed price before deploying.
+Render supplies HTTPS and an `onrender.com` URL, independent of the development
+workspace. No VPS or custom domain is required. Commits to `main` automatically
+redeploy this service.
+
+The app uses Gunicorn, a read-only HTTP interface and the same analysis code as
+the local explorer. The dataset is stored at `/var/data/gaia/analysis.json`, on
+the persistent disk. The first boot seeds the four regression sample games only
+when no dataset exists. Restarts and deploys preserve an existing dataset.
+This is an initial small-data explorer, not yet a complete archive dashboard.
+
+To pull additional **finished game slugs**, open the service's Render Shell:
+
+```bash
+python -m gaia_stats fetch Jubilant-rover-3041 Comfy-snail-3333 Proper-outpost-7588 Modern-riddle-1723 --directory /var/data/gaia/raw
+python -m gaia_stats ingest /var/data/gaia/raw/*.json --output /var/data/gaia/analysis.json
+```
+
+Add more game slugs from the BGS finished-game list to the first command, then
+repeat the second command over the entire raw directory. Downloads are sequential
+and paced; unsupported or unreconciled games are reported and excluded. The
+import atomically replaces the dataset and the app reloads it on the next request.
+An entirely invalid import leaves the previous dataset intact. Back up raw files
+and the normalized JSON externally as the archive grows; a persistent disk alone
+is not a backup strategy. Raw exports are not exposed by the web app.
+
+**Automatic discovery and scheduled archive refresh are not configured yet.**
+The fetch command currently takes explicit game slugs. The inherited Selenium
+notebook and historical name list remain available for later archive integration.
+
+For local production-server checks:
+
+```bash
+pip install -r requirements-web.txt
+GAIA_DATASET=data/analysis.json gunicorn 'gaia_stats.wsgi:create_app()' --bind 127.0.0.1:8000
+```
+
 ![screenshot](https://user-images.githubusercontent.com/54454071/191138235-c8122774-90af-40db-a3ca-365aa44c5a8d.png)
 
 Statistical analysis and texting service [web app](https://gpstats.dev) for a boardgame called Gaia Project. 
