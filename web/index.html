@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gaia Stats · Opening Explorer</title>
+<style>
+[hidden]{display:none!important}
+:root{color-scheme:dark;font:16px/1.55 system-ui,sans-serif;background:#0c1220;color:#e4eaf3}*{box-sizing:border-box}body{margin:0}main{max-width:1240px;margin:auto;padding:40px 24px}header{display:flex;justify-content:space-between;gap:24px;align-items:center}.eyebrow{color:#80c6b9;font-size:12px;letter-spacing:.16em;text-transform:uppercase}h1{font-size:36px;line-height:1.2;margin:8px 0}p{color:#a9b6ca;margin:8px 0 24px}button,select,input,a.download{font:inherit;border:1px solid #34455e;border-radius:6px;background:#151f31;color:inherit;padding:9px 12px}button{cursor:pointer}nav{display:flex;border-bottom:1px solid #34455e;margin:28px 0}nav button{border:0;border-radius:0;background:none;padding:15px 24px;color:#a9b6ca}nav button[aria-selected=true]{color:#9de0cf;border-bottom:3px solid #9de0cf;background:#13282d}.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;background:#111b2c;padding:22px;border-radius:10px}label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#a9b6ca}select,input{width:100%;font-size:14px}details{margin:20px 0}summary{cursor:pointer;color:#a9d4f0}#status{font-size:14px}#stats{display:flex;gap:28px;margin:28px 0;font-size:14px}strong.metric{display:block;font-size:30px;font-weight:500;color:#e4eaf3}h2{font-size:20px}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid #26344a;vertical-align:top}th{color:#a9b6ca;font-size:12px;white-space:nowrap}td small{display:block;color:#8295af}a{color:#9de0cf}a.download{text-decoration:none;white-space:nowrap}#empty{padding:30px;border:1px dashed #34455e;color:#a9b6ca}#error{color:#ffaaa0}.note{padding:14px 18px;border-left:3px solid #527c9c;background:#111b2c;font-size:14px;color:#a9b6ca}pre{white-space:pre-wrap;font-size:12px;color:#a9b6ca}.sample{color:#e9c388}.good{color:#9de0cf}@media(max-width:640px){header{align-items:flex-start;flex-direction:column}h1{font-size:28px}main{padding:24px 16px}nav button{padding:14px 18px}}
+</style>
+<main>
+<header><div><div class="eyebrow">Gaia Stats / Opening explorer</div><h1>Build for the situation.</h1><p>Compare round-one build orders within each version of Gaia Project.</p></div><a class="download" id="export" href="/api/export?ruleset=base">Download filtered CSV ↓</a></header>
+<nav role="tablist" aria-label="Game version"><button id="base" role="tab" aria-controls="analysis" aria-selected="true" tabindex="0">Base Game</button><button id="lost-fleet" role="tab" aria-controls="analysis" aria-selected="false" tabindex="-1">Lost Fleet</button></nav>
+<section id="analysis" role="tabpanel" aria-labelledby="base">
+<div class="filters" id="primary"></div>
+<details><summary>Match scoring tiles and setup</summary><div class="filters" id="setup"></div></details>
+<div id="error" role="alert"></div><div id="status" aria-live="polite"></div>
+<div id="stats"></div>
+<h2>Round-one build orders</h2>
+<p class="note">These are observed outcomes, not proof of an optimal strategy. Openings stay grouped by faction, player count and setup variant. All skill levels includes unrated players. Top players uses the top 10% of recorded pregame Elo within each ruleset and player count, including ties; frequent players can contribute multiple games. Strength filters are not statistical skill adjustment. Fewer than 5 samples is marked limited evidence.</p>
+<div id="empty" hidden>No matching completed games. Import BGS exports or broaden the filters.</div>
+<div class="table-wrap"><table><thead><tr><th>Faction / setup</th><th>Build sequence</th><th>Samples</th><th>Mean VP</th><th>Win share</th><th>Mean Elo</th></tr></thead><tbody id="groups"></tbody></table></div>
+<details><summary>Inspect matching games and full opening moves</summary><div id="games"></div></details>
+</section></main>
+<script>
+const labels={skill:'Player skill',faction:'Faction',player_count:'Players',opponent:'Opponent faction',min_elo:'Custom player Elo cutoff',min_table_elo:'Minimum table-average Elo',layout:'Map layout',auction:'Auction',faction_variant:'Faction balance',faction_variant_version:'Balance version',official_center_sectors:'Official center sectors',final_scoring:'Final scoring includes',technology:'Technology available',...Object.fromEntries(Array.from({length:6},(_,i)=>['round'+(i+1),'Round '+(i+1)+' scoring']))};
+const primary=['skill','faction','player_count','opponent','min_elo'];
+const setup=['round1','round2','round3','round4','round5','round6','final_scoring','technology','layout','auction','faction_variant','faction_variant_version','official_center_sectors','min_table_elo'];
+const saved={base:{},'lost-fleet':{}};
+let version=location.hash==='#lost-fleet'?'lost-fleet':'base',requestId=0;
+const el=id=>document.getElementById(id);
+function node(tag,text){const n=document.createElement(tag);n.textContent=text;return n}
+function params(){return new URLSearchParams({ruleset:version,...saved[version]})}
+function controls(options){
+ for(const [container,keys] of [['primary',primary],['setup',setup]]){
+  const root=el(container);root.replaceChildren();
+  for(const key of keys){const label=node('label',labels[key]);let input;
+   if(key==='min_elo'||key==='min_table_elo'){input=document.createElement('input');input.type='number';input.placeholder=key==='min_table_elo'?'Any (Tim’s workbook: 200)':'Enter pregame Elo';input.step='any';if(key==='min_elo')label.hidden=saved[version].skill!=='custom'}
+   else if(key==='skill'){input=document.createElement('select');for(const [value,title] of [['all','All skill levels'],['top','Top players · top 10%'],['custom','Custom Elo cutoff']])input.append(new Option(title,value))}
+   else{input=document.createElement('select');input.append(new Option('Any',''));for(const value of options[key]||[])input.append(new Option(String(value),String(value)))}
+   input.value=saved[version][key]||(key==='skill'?'all':'');input.addEventListener('change',()=>{if(input.value)saved[version][key]=input.value;else delete saved[version][key];if(key==='skill'){if(input.value!=='custom')delete saved[version].min_elo;controls(options);if(input.value==='custom'&&!saved[version].min_elo){++requestId;el('status').textContent='Enter a player Elo cutoff to load custom results.';el('groups').replaceChildren();el('stats').replaceChildren();el('games').replaceChildren();el('export').hidden=true;return}}load(false)});label.append(input);root.append(label);
+  }
+ }
+}
+function render(data){
+ el('stats').replaceChildren();for(const [count,label] of [[data.games,'matching games'],[data.player_records,'player records'],[data.groups.length,'distinct openings']]){const d=node('div',label);d.prepend(Object.assign(node('strong',String(count)),{className:'metric'}));el('stats').append(d)}
+ const skillLabel=data.skill.mode==='all'?'All skill levels':data.skill.mode==='top'?'Top players (top 10% of pregame ratings)':'Custom player Elo cutoff';
+ const thresholds=Object.entries(data.skill.thresholds).map(([count,value])=>`${count}p: Elo ≥ ${value.toFixed(1)} (${data.skill.rated_counts[count]} rated records)`).join(' · ');
+ el('status').textContent=`${version==='base'?'Base Game':'Lost Fleet'} only · ${skillLabel}${thresholds?' · '+thresholds:''} · ${data.rejected_games} rejected imports across the dataset. Data covers imported games, not the full BGS archive.`;
+ el('groups').replaceChildren();el('empty').hidden=data.groups.length>0;
+ for(const g of data.groups){const tr=document.createElement('tr');const faction=node('td',g.faction);faction.append(node('small',`${g.player_count} players · ${g.layout} · ${g.auction} · ${g.faction_variant} v${g.faction_variant_version} · official center: ${g.official_center_sectors}`));tr.append(faction,node('td',g.build_order));const n=node('td',String(g.samples));n.append(Object.assign(node('small',g.enough_samples?'5+ samples':'Limited evidence'),{className:g.enough_samples?'good':'sample'}));tr.append(n,node('td',g.average_score.toFixed(1)),node('td',(100*g.win_share).toFixed(1)+'%'),node('td',g.average_elo===null?'—':g.average_elo.toFixed(0)));el('groups').append(tr)}
+ el('games').replaceChildren();for(const r of data.rows){const d=document.createElement('details');const s=node('summary',`${r.game_id} · ${r.faction} · ${r.score} VP · rank ${r.rank}`);const link=node('a','View on BGS');link.href='https://www.boardgamers.space/game/'+encodeURIComponent(r.game_id);link.target='_blank';link.rel='noopener';d.append(s,link,node('pre',r.opening_moves.join('\n')),node('pre','VP sources: '+JSON.stringify(r.vp_sources,null,2)));el('games').append(d)}
+}
+async function load(rebuild=true){
+ const id=++requestId;el('error').textContent='';el('status').textContent='Loading…';el('export').hidden=true;el('groups').replaceChildren();el('stats').replaceChildren();el('games').replaceChildren();el('empty').hidden=true;
+ if(saved[version].skill==='custom'&&!saved[version].min_elo){el('status').textContent='Enter a player Elo cutoff to load custom results.';return}
+ try{const response=await fetch('/api/analysis?'+params());if(!response.ok)throw new Error('Could not load analysis ('+response.status+').');const data=await response.json();if(id!==requestId)return;if(rebuild)controls(data.options);render(data);el('export').href='/api/export?'+params();el('export').hidden=false}
+ catch(error){if(id===requestId){el('error').textContent=error.message;el('status').textContent='Analysis unavailable.'}}
+}
+function activate(next,focus=false){version=next;location.hash=version;for(const key of ['base','lost-fleet']){el(key).setAttribute('aria-selected',key===version);el(key).tabIndex=key===version?0:-1}el('analysis').setAttribute('aria-labelledby',version);if(focus)el(version).focus();load()}
+for(const key of ['base','lost-fleet']){el(key).onclick=()=>activate(key);el(key).onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();activate(event.key==='Home'?'base':event.key==='End'?'lost-fleet':version==='base'?'lost-fleet':'base',true)}}}
+activate(version);
+</script></html>

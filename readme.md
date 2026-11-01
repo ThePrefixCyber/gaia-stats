@@ -23,6 +23,67 @@ This repo contains a set of Jupyter Notebooks presenting the code used to create
 pip install -r requirements.txt
 ```
 
+## Base Game and Lost Fleet opening explorer
+
+A new dependency-free Python 3.10+ analysis path lives in `gaia_stats/`.
+It runs alongside the original notebooks. The deployed Flask app is not part of
+this repository; the local explorer provides a separate integration surface.
+
+```bash
+# Smoke-test using four reduced, real public game exports (14 player records).
+python -m gaia_stats ingest tests/fixtures/*.json --output data/analysis.json
+python -m gaia_stats serve --dataset data/analysis.json
+# Open http://127.0.0.1:8000
+python -m unittest discover -s tests -v
+```
+
+For actual analysis, supply downloaded BGS game JSON files or the existing
+newline-delimited `data/game_data_raw.txt` instead of the fixture glob.
+The importer deduplicates games and reports rejected records in its output.
+The sample collection is too small to recommend strategies.
+
+The **Base Game** and **Lost Fleet** tabs have independent filters and CSV
+downloads. Both API endpoints require an explicit `ruleset=base` or
+`ruleset=lost-fleet`; there is no combined statistics mode. The parser uses
+explicit BGS expansion flags, never faction names, and rejects unknown or
+conflicting expansion configurations, cancelled/incomplete games, solo/Automa,
+withdrawn players, and games with unreconciled score ledgers.
+
+Each player record retains round-one build sequence and original opening moves,
+the six round scorings, final scorings, available technologies, map configuration,
+opponent factions, bid, Elo and expansion state. VP sources retain BGS identifiers
+so new ship/artifact sources are not silently discarded. Final score is verified
+against all logged VP changes plus the initial 10 VP. Actual net final scores
+determine rank; ties share first-place credit. Bid is exposed separately.
+
+The explorer includes **All skill levels**, **Top players** and **Custom Elo
+cutoff** modes. All skill levels includes unrated records. Top players selects
+records at or above the 90th percentile of pregame Elo, computed separately for
+each ruleset and player count before faction/scoring filters. The threshold and
+rated reference sample count are shown; ties are included. This is the top 10%
+of player-game ratings in the imported dataset, not the top 10% of unique players
+or a platform-wide leaderboard. Frequent players contribute multiple records.
+Custom mode accepts a numeric minimum individual starting Elo. An additional
+minimum **table-average Elo** filter preserves the approach used in
+`stats_workbook.ipynb` (`MIN_AVG_ELO = 200`); it is independent of player-skill mode
+and is off by default. Each ruleset tab remembers its own selections.
+
+The explorer filters by faction, opponents, player count, scoring tiles,
+technology, player skill, table-average Elo, layout, auction and balance settings. Opening groups
+remain split by faction, player count, layout, auction and balance version.
+It shows sample size, observed mean VP, win share and mean Elo; fewer than five
+samples is labelled limited evidence. Five samples is a display threshold, not
+a statistical significance claim. Results are descriptive, not causal estimates
+or proven optimal openings. Elo filtering is not skill adjustment. Exact map
+geometry and full opening actions are retained for later analysis; the current
+groups compare building sequences, not complete action policies.
+
+Next integration work: connect Tim's production archive/update job, add these
+ruleset tabs to the deployed app, broaden fixtures to cover Darkanians and all
+expansion mechanics, and add conditional comparisons for ship exploration,
+artifacts, booster/technology choices and map geometry. Existing notebooks and
+their base-game outputs remain unchanged.
+
 ## Notebooks
 
 #### <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/texting_app.ipynb"><img src="https://img.shields.io/badge/nbviewer-texting__app-informational"/></a>
