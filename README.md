@@ -48,6 +48,31 @@ Diagnostics: `sudo journalctl -u gaia-stats -n 50 --no-pager` and
 `sudo systemctl status gaia-stats --no-pager`. Back up `/var/lib/gaia-stats`
 outside this VPS. The optional Render configuration below is an alternative.
 
+### Manage updates from GitHub without inbound SSH from the agent
+
+After the initial install, optionally enable a systemd deployment timer:
+
+```bash
+cd /opt/gaia-stats
+sudo git pull --ff-only
+sudo bash deploy/enable-updates.sh
+```
+
+The VPS then checks `main` every two minutes, installs updated web dependencies,
+runs tests under the app account and restarts the service. Failed deployments
+attempt to restore the previous code/dependencies. This is a simple single-server
+deployment, with a brief restart, not a zero-downtime release system. It refuses
+tracked local edits and rewritten/non-fast-forward history. Commit application
+changes through GitHub; disable the timer before editing the deployed checkout.
+Only grant repository write access to people trusted to deploy application code.
+
+`/healthz` exposes the deployed commit, record counts and last updater result
+without logs or credentials, so the agent can verify updates through HTTP.
+Detailed updater logs stay on the server:
+`sudo journalctl -u gaia-stats-update -n 80 --no-pager`.
+Disable polling with `sudo systemctl disable --now gaia-stats-update.timer`.
+This does not grant an interactive remote shell to ChatGPT.
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ThePrefixCyber/gaia-stats)
 
 ## Persistent browser deployment

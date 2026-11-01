@@ -1,6 +1,7 @@
 """Production WSGI entry point; read-only HTTP, disk-backed dataset with hot reload."""
 import json
 import os
+import subprocess
 from pathlib import Path
 from threading import Lock
 from urllib.parse import parse_qs
@@ -14,6 +15,13 @@ class Application:
         self.lock = Lock()
         self.dataset = None
         self.version = None
+        try:
+            self.commit = subprocess.check_output(
+                ["git", "-c", "safe.directory=" + str(Path(__file__).resolve().parent.parent), "rev-parse", "HEAD"],
+                cwd=Path(__file__).parent.parent, text=True, timeout=3,
+                stderr=subprocess.DEVNULL).strip()
+        except (OSError, subprocess.SubprocessError):
+            self.commit = None
         if not self.path.exists():
             fixtures = Path(__file__).parent.parent / "tests/fixtures"
             ingest(sorted(fixtures.glob("*.json")), self.path)
@@ -38,8 +46,17 @@ class Application:
                 status, body, content_type = "405 Method Not Allowed", b"GET only", "text/plain"
                 headers.append(("Allow", "GET"))
             elif path == "/healthz":
-                self.load()
-                body, content_type = b'{"status":"ok"}', "application/json"
+                dataset = self.load()
+                deployment = None
+                try:
+                    deployment = json.loads((self.path.parent / "deploy-status.json").read_text())
+                except (OSError, ValueError):
+                    pass
+                body = json.dumps({"status": "ok", "commit": self.commit,
+                                   "games": len({row["game_id"] for row in dataset["rows"]}),
+                                   "player_records": len(dataset["rows"]),
+                                   "deployment": deployment}).encode()
+                content_type = "application/json"
             else:
                 body, content_type = response_for(self.load(), path, filters)
                 if path == "/api/export":
