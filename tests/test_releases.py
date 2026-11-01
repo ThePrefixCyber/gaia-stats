@@ -76,6 +76,29 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'lose'):validate(candidate,prior)
         self.assertEqual(current(self.store),prior)
 
+    def test_version_change_recomputes_existing_accepted_raw_without_download(self):
+        payload=json.loads((FIXTURES/'cohort/Shiny-cypress-1384.json').read_text())
+        client=FakeClient({payload['slug']:payload})
+        collect(self.archive,'base',client=client,max_pages=1,max_downloads=1)
+        def old_normalize(game):
+            rows=normalize(game)
+            for row in rows:
+                for key in ('scoring_vp','vp_ledger_complete','normalization_version'):
+                    row.pop(key,None)
+            return rows
+        with patch('gaia_stats.releases.NORMALIZATION_VERSION',1), patch('gaia_stats.releases.normalize',side_effect=old_normalize):
+            first=self.publish()
+        second=self.publish()
+        self.assertNotEqual(first['release'],second['release'])
+        self.assertEqual(first['datasets'],second['datasets'])
+        with sqlite3.connect(current(self.store)/'base.sqlite') as db:
+            rows=[json.loads(x[0]) for x in db.execute('SELECT payload FROM observations WHERE game_id=?',(payload['slug'],))]
+        self.assertEqual(len(rows),4)
+        self.assertTrue(all(r['normalization_version']==2 and r['vp_ledger_complete'] for r in rows))
+        self.assertEqual(next(r for r in rows if r['faction']=='ivits')['scoring_vp']['final1'],0)
+        self.assertEqual(client.exports,[payload['slug']])
+        self.assertEqual(self.publish()['release'],second['release'])
+
     def test_seed_raw_overlap_replaces_not_duplicates(self):
         with sqlite3.connect(self.seed) as db:
             payload=json.loads(db.execute('SELECT payload FROM observations WHERE faction="terrans"').fetchone()[0]);payload['score']=222

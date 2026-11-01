@@ -24,7 +24,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .__main__ import atomic_json
-from .analysis import normalize
+from .analysis import normalize, ruleset
 
 ORIGIN = 'https://boardgamers.space'
 SLUG = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,120}\Z')
@@ -116,6 +116,28 @@ def listing_slug(entry):
     return slug
 
 
+def explicitly_lost_fleet(entry):
+    """Only explicit, consistent export/listing metadata may skip a base download."""
+    try:
+        return ruleset(entry) == 'lost-fleet'
+    except (ValueError, TypeError, AttributeError):
+        return False  # Ambiguous metadata must be resolved by the full export.
+
+
+def record_listing_skip(root, db, slug, entry, url, now):
+    existing=db.execute('SELECT status FROM exports WHERE mode="base" AND slug=?',(slug,)).fetchone()
+    if existing and existing[0] not in ('pending','retry'):
+        return 0
+    # Save the exact public listing evidence before marking the queue entry skipped.
+    atomic_json(root/'base'/'listing-skipped'/(slug+'.json'),
+                {'source_url':url,'observed_at':datetime.datetime.fromtimestamp(now,datetime.timezone.utc).isoformat(),
+                 'entry':entry,'reason':'Explicit Lost Fleet listing metadata'})
+    db.execute('INSERT OR IGNORE INTO exports(mode,slug,status) VALUES (?,?,?)',('base',slug,'pending'))
+    db.execute('UPDATE exports SET status="skipped",reason=?,source_url=? WHERE mode="base" AND slug=?',
+               ('Explicit Lost Fleet listing metadata',url,slug))
+    return 1
+
+
 @contextmanager
 def archive_lock(directory):
     directory.mkdir(parents=True, exist_ok=True)
@@ -152,7 +174,7 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                 sha256 TEXT, PRIMARY KEY(mode,slug))''')
             db.execute('CREATE TABLE IF NOT EXISTS events (mode TEXT, recorded_at REAL, reason TEXT)')
             db.execute('CREATE TABLE IF NOT EXISTS cooldowns (host TEXT PRIMARY KEY, retry_at REAL)')
-            summary = dict(mode=mode, pages=0, queued=0, accepted=0, rejected=0, retry=0, listing_error=None)
+            summary = dict(mode=mode, pages=0, queued=0, accepted=0, rejected=0, retry=0, skipped=0, listing_error=None)
             cooldown = db.execute('SELECT retry_at FROM cooldowns WHERE host=?', (ORIGIN,)).fetchone()
             if cooldown and cooldown[0] > now():
                 summary['listing_error'] = 'Server cooldown is active'
@@ -191,6 +213,9 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                         db.execute('INSERT INTO events VALUES (?,?,?)', (mode, now(), str(error)))
                         continue
                     seen_in_scan.append(slug)
+                    if mode=='base' and explicitly_lost_fleet(entry):
+                        summary['skipped']+=record_listing_skip(root,db,slug,entry,url,now())
+                        continue
                     result = db.execute('INSERT OR IGNORE INTO exports(mode,slug,status) VALUES (?,?,?)',
                                         (mode, slug, 'pending'))
                     summary['queued'] += result.rowcount
@@ -202,6 +227,12 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                 summary['pages'] += 1
                 if complete:
                     break
+            if mode=='base':
+                summary['skipped']+=db.execute("""UPDATE exports AS b SET status='skipped',
+                    reason='Already validated as Lost Fleet in the local archive'
+                    WHERE b.mode='base' AND b.status IN ('pending','retry') AND EXISTS
+                    (SELECT 1 FROM exports AS lf WHERE lf.mode='lost-fleet' AND lf.slug=b.slug AND lf.status='accepted')""").rowcount
+                db.commit()
             scope = ''
             parameters = [mode, now()]
             if head_only:

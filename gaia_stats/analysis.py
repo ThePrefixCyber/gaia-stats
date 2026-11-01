@@ -4,6 +4,8 @@ from statistics import mean
 import math
 import re
 
+from .scoring import phase_views, BASE_SOURCES, NORMALIZATION_VERSION
+
 RULESETS = ("base", "lost-fleet")
 
 
@@ -110,6 +112,7 @@ def normalize(game):
                 opening[pos].extend(re.findall(r"\bbuild\s+(\w+)", move))
     if rounds_seen != set(range(1, 7)):
         raise ValueError("Incomplete round log")
+    canonical, tile_scores, scoring_errors, ended = phase_views(data, len(players))
     rows = []
     scores = [p["score"] for p in players]
     top_count = scores.count(max(scores))
@@ -121,6 +124,14 @@ def normalize(game):
         sources = dict(vp[pos])
         sources["initial"] = 10
         delta = player["score"] - sum(sources.values())
+        complete = ended and delta == 0
+        raw_sources = sources
+        if version == 'base':
+            sources = dict(canonical[pos])
+            if complete:
+                for key in BASE_SOURCES:sources.setdefault(key, 0)
+            if sum(sources.values()) != sum(raw_sources.values()):
+                raise ValueError('Canonical VP categories do not reconcile to raw ledger')
         elo = player.get("elo", {}).get("initial")
         opponents = [p.get("elo", {}).get("initial") for i, p in enumerate(players) if i != pos]
         rows.append({
@@ -148,6 +159,11 @@ def normalize(game):
             "map": options.get("map"),
             "build_order": " → ".join(opening[pos]) or "No round-one builds",
             "opening_moves": raw_opening[pos], "vp_sources": sources,
+            "vp_sources_raw": raw_sources, "vp_ledger_complete": complete,
+            "normalization_version": NORMALIZATION_VERSION,
+            "vp_source_basis": "historical-base-categories" if version == "base" else "raw-bgs-sources",
+            "scoring_vp": tile_scores[pos] if complete and scoring_errors[pos] is None else None,
+            "scoring_vp_unavailable": scoring_errors[pos] or (None if complete else "Final scoring phase is not verified"),
             "score_delta": delta, "score_verified": delta == 0,
             "exploration_ships": state["data"].get("explorationShips", {}),
             "artifacts": state["data"].get("artifacts", []),

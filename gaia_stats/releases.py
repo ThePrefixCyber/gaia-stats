@@ -16,6 +16,7 @@ import fcntl
 from .__main__ import atomic_json
 from .analysis import normalize
 from .cohort import enrich
+from .scoring import NORMALIZATION_VERSION
 
 
 def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -101,7 +102,7 @@ def source_identity(seed_base,archive,legacy):
     if database.exists():
         with sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True) as db:
             entries=list(db.execute('SELECT mode,slug,sha256 FROM exports WHERE status="accepted" ORDER BY mode,slug'))
-    return {'seed':digest(seed_base),'legacy':digest(legacy) if legacy else None,
+    return {'normalization_version':NORMALIZATION_VERSION,'seed':digest(seed_base),'legacy':digest(legacy) if legacy else None,
             'accepted':hashlib.sha256(json.dumps(entries).encode()).hexdigest()}
 
 

@@ -14,6 +14,7 @@ from statistics import mean, quantiles
 
 from .analysis import normalize, select
 from .__main__ import atomic_json
+from .scoring import complete_ledger, tile_value
 
 PLOTS = ('advanced-tech-frequency', 'advanced-tech-score', 'basic-tech-frequency',
          'basic-tech-score', 'round-one-structures', 'final-scoring',
@@ -160,9 +161,9 @@ def statistics(rows, kind):
         # Absence in a complete reconciled ledger is an observed zero.
         cells=[]
         for source in sources:
-            # Historical CSV absence is unknown, unlike a complete LF VP ledger.
+            # Historical CSV absence is unknown, unlike a complete raw VP ledger.
             values=[r['vp_sources'].get(source,0) for r in rows
-                    if r['ruleset']=='lost-fleet' or source in r['vp_sources']]
+                    if complete_ledger(r) or source in r['vp_sources']]
             cell={'label':source,'samples':len(values)}
             if values:
                 q1,median,q3=quantiles(values,n=4,method='inclusive') if len(values)>1 else (values[0],)*3
@@ -170,18 +171,20 @@ def statistics(rows, kind):
             if len(values)<=2000:cell['values']=values
             cells.append(cell)
     value_label='Mean final net VP'
-    if rows and rows[0]['ruleset']=='base' and kind in ('round-scoring','final-scoring'):
+    if kind in ('round-scoring','final-scoring'):
         value_label='Mean VP earned from scoring tile(s)'
         for cell in cells:
             group=groups[(cell['x'],cell['y'])]
             keys=[f"round{cell['x'].split()[-1]}"] if kind=='round-scoring' else ['final1','final2']
-            values=[sum(r['vp_sources'][k] for k in keys) for r in group if all(k in r['vp_sources'] for k in keys)]
+            values=[sum(tile_value(r,k) for k in keys) for r in group if all(tile_value(r,k) is not None for k in keys)]
             cell['mean_final_score']=cell['mean_score']
             cell['mean_score']=mean(values) if values else None
             cell['score_samples']=len(values)
+        required=[f'round{i}' for i in range(1,7)] if kind=='round-scoring' else ['final1','final2']
+        unavailable=sum(any(tile_value(r,k) is None for k in required) for r in rows)
     return {'kind': kind, 'cells': cells, 'unavailable_records': unavailable,
             'value_label':value_label,
-            'note': value_label+'; net-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'}
+            'note': value_label+('; mean_final_score separately reports conditional final net VP' if kind in ('round-scoring','final-scoring') else '')+'. Net-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'}
 
 
 def report(dataset, filters):
@@ -205,7 +208,7 @@ def setup_comparisons(groups):
         for kind,keys in (('rounds',[f'round{i}' for i in range(1,7)]),('finals',['final1','final2'])):
             record={'faction':faction,'samples':len(rows)}
             for key in keys:
-                values=[r['vp_sources'].get(key,0) for r in rows if r['ruleset']=='lost-fleet' or key in r['vp_sources']]
+                values=[tile_value(r,key) for r in rows if tile_value(r,key) is not None]
                 record[key]=mean(values) if values else None
                 record[key+'_n']=len(values)
             result[kind].append(record)
@@ -222,7 +225,8 @@ def export(dataset, filters):
     rows = cohort(dataset, filters)
     fields = ('game_id', 'ruleset', 'faction', 'player_count', 'score', 'rank', 'win_share',
               'elo', 'layout', 'auction', 'faction_variant', 'lf_2p_4qic_effective',
-              'round_scorings', 'final_scorings', 'owned_technologies', 'round_one_structures', 'vp_sources')
+              'round_scorings', 'final_scorings', 'owned_technologies', 'round_one_structures', 'vp_sources',
+              'vp_sources_raw', 'vp_ledger_complete', 'scoring_vp')
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()

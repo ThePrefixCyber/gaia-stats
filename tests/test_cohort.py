@@ -118,7 +118,9 @@ class CohortTests(unittest.TestCase):
 
     def test_lf_comparisons_include_observed_zero_scoring(self):
         rows=copy.deepcopy(self.rows)
-        for r in rows:r['vp_sources'].pop('round1',None)
+        for r in rows:
+            r['vp_sources'].pop('round1',None)
+            r['scoring_vp']['round1']=0
         result=report({'rows':rows},{'ruleset':'lost-fleet','lf_2p_4qic_mode':'include-both'})
         for r in result['setup_comparisons']['rounds']:
             self.assertEqual(r['round1'],0)

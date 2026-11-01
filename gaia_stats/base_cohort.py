@@ -45,7 +45,7 @@ def convert(game, count):
             'round_scorings':rounds,'final_scorings':finals,'technologies':techs,
             'ship_technologies':{},'owned_technologies':owned,
             'round_one_structures':structures if all(v is not None for v in structures.values()) else None,
-            'vp_sources':sources,'score_verified':True,'score_basis':'CSV final score; ledger not reverified',
+            'vp_sources':sources,'vp_ledger_complete':False,'score_verified':True,'score_basis':'CSV final score; ledger not reverified',
             'lf_2p_4qic_effective':False,'opponents':[],'table_elo':None,
             'bid':number(game.get(prefix+'score_bid'))})
     return rows
