@@ -9,7 +9,8 @@ import io
 import math
 from statistics import quantiles
 
-from .cohort import report, export
+from .cohort import report, export, cohort
+from .scoring import complete_ledger
 
 
 class Cell:
@@ -50,7 +51,8 @@ def statistics(batches, filters, scope):
     setup = {kind: defaultdict(Cell) for kind in ('rounds', 'finals', 'technologies')}
     plot_cells = defaultdict(lambda: defaultdict(Cell))
     plot_meta = {}
-    points = defaultdict(list)
+    points = {}
+    prior_complete = 0
     identifiers = []
     missing_elo = 0
     for batch in batches:
@@ -71,12 +73,24 @@ def statistics(batches, filters, scope):
                 plot_meta[kind] = {k: v for k, v in plot.items() if k not in ('cells', 'unavailable_records')}
                 plot_meta[kind]['unavailable_records'] = 0
             plot_meta[kind]['unavailable_records'] += plot['unavailable_records']
+            if kind == 'point-sources':
+                # Only selected complete ledgers imply zeros for absent sources.
+                complete = sum(complete_ledger(row) for row in cohort({'rows': batch}, filters))
+                present = {cell['label'] for cell in plot['cells']}
+                for label in points.keys() - present:
+                    points[label].extend([0] * complete)
             for cell in plot['cells']:
                 if kind == 'point-sources':
-                    points[cell['label']].extend(cell['values'])
+                    label = cell['label']
+                    if label not in points:
+                        # The source may first appear after several complete batches.
+                        points[label] = [0] * prior_complete
+                    points[label].extend(cell['values'])
                 else:
                     key = (cell['x'], cell['y']) if 'x' in cell else tuple(cell['label'].split(' / '))
                     plot_cells[kind][key].add(cell)
+            if kind == 'point-sources':
+                prior_complete += complete
     if not identifiers:
         return report({'rows': [], 'scope': scope}, filters)
     plots = {}
