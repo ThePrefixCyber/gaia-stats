@@ -106,6 +106,16 @@ def listing_entries(payload):
     return payload
 
 
+def listing_slug(entry):
+    """The live public listing uses _id; older saved envelopes used slug."""
+    if entry.get('slug') and entry.get('_id') and entry['slug'] != entry['_id']:
+        raise ValueError('Conflicting listing identifiers')
+    slug = entry.get('_id') or entry.get('slug')
+    if not isinstance(slug, str) or not SLUG.fullmatch(slug):
+        raise ValueError('Invalid listing identifier')
+    return slug
+
+
 @contextmanager
 def archive_lock(directory):
     directory.mkdir(parents=True, exist_ok=True)
@@ -174,9 +184,10 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                     db.commit()
                     break
                 for entry in entries:
-                    slug = entry.get('slug')
-                    if not isinstance(slug, str) or not SLUG.fullmatch(slug):
-                        db.execute('INSERT INTO events VALUES (?,?,?)', (mode, now(), 'Invalid listing slug'))
+                    try:
+                        slug = listing_slug(entry)
+                    except ValueError as error:
+                        db.execute('INSERT INTO events VALUES (?,?,?)', (mode, now(), str(error)))
                         continue
                     result = db.execute('INSERT OR IGNORE INTO exports(mode,slug,status) VALUES (?,?,?)',
                                         (mode, slug, 'pending'))

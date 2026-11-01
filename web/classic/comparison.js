@@ -1,0 +1,36 @@
+// New frontend for the original site's published aggregate-data contract.
+const comparisonRounds=['2vp_per_terra','2vp_per_research_bump','2vp_per_mine_place','5vp_per_fed_place','4vp_per_ts_place','4vp_per_gaia_place','5vp_per_3pip_place','3vp_per_ts_place','3vp_per_gaia_place'];
+const comparisonTechs=['3vp_per_fed_pass','2vp_per_tech_bump','1qic_5c_action','2vp_per_mine','3vp_per_rl_pass','1o_per_sector','1vp_per_terra_pass','2vp_per_gaia','4vp_per_ts','2vp_per_sector','3o_action','5vp_per_fed','3k_action','3vp_per_mine_place','3vp_per_ts_place'];
+const comparisonFinals=[['planetType','Planet types'],['structure','Structures'],['sector','Sectors'],['satellite','Satellites'],['gaia','Gaia planets'],['structureFed','Structures in federations']];
+const comparisonTracks=['Terraforming','Navigation','Artificial intelligence','Gaia project','Economy','Science'];
+const ce=id=>document.getElementById(id);
+function selectField(parent,label,name,options,index=0){const wrap=document.createElement('label');wrap.textContent=label;const select=document.createElement('select');select.name=name;select.setAttribute('aria-label',label);for(const o of options){const [value,text]=Array.isArray(o)?o:[o,o];select.add(new Option(text,value));}select.selectedIndex=index;wrap.append(select);parent.append(wrap);return select;}
+function openComparisonWizard(playerCounts,selected){
+ const dialog=ce('setup'),form=ce('setup-form');form.replaceChildren();let stage=0;
+ const titles=['Number of players','Round scoring','Advanced technology positions','Final scoring'];
+ const sections=titles.map(title=>{const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=title;field.append(legend);form.append(field);return field;});
+ const count=selectField(sections[0],'Players','num_players',playerCounts);count.value=playerCounts.includes(selected)?selected:playerCounts[0];
+ for(let i=0;i<6;i++)selectField(sections[1],'Round '+(i+1),'round_'+(i+1),comparisonRounds,i);
+ for(let i=0;i<6;i++)selectField(sections[2],comparisonTracks[i],'adv_'+(i+1),comparisonTechs,i);
+ for(let i=0;i<2;i++)selectField(sections[3],'Final '+(i+1),'final_'+(i+1),comparisonFinals,i);
+ function valid(){const values=[...sections[stage].querySelectorAll('select')].map(s=>s.value);if(stage===1)return values.every(v=>values.filter(x=>x===v).length<=(v==='5vp_per_3pip_place'?2:1));if(stage===2||stage===3)return new Set(values).size===values.length;return values.every(Boolean);}
+ function update(){sections.forEach((s,i)=>s.hidden=i!==stage);ce('setup-back').disabled=stage===0;ce('setup-next').textContent=stage===3?'Show comparison':'Next';ce('setup-next').disabled=!valid();ce('setup-error').textContent=valid()?'':stage===1?'Select distinct tiles; the PI/academy tile may appear twice.':'Select distinct tiles.';}
+ form.onchange=update;ce('setup-back').onclick=()=>{stage--;update();};ce('setup-next').onclick=()=>{if(!valid())return;if(stage<3){stage++;update();}else location.href='/classic/compare?'+new URLSearchParams(new FormData(form));};ce('setup-close').onclick=()=>dialog.close();update();dialog.showModal();
+}
+
+if(ce('comparison-results')){
+ const query=new URLSearchParams(location.search),status=ce('comparison-status');
+ const format=value=>typeof value==='number'&&Number.isFinite(value)?value.toFixed(3):'—';
+ function table(title,selection,headings,rows,kind,values,help){
+  const section=document.createElement('section'),h=document.createElement('h2'),p=document.createElement('p');h.textContent=title;p.textContent=selection;section.append(h,p);
+  const table=document.createElement('table'),thead=document.createElement('thead'),hr=document.createElement('tr'),tbody=document.createElement('tbody');table.append(thead,tbody);thead.append(hr);let sorted=[...rows],direction=1,sortColumn=-1;
+  function draw(){tbody.replaceChildren();for(const row of sorted){const tr=document.createElement('tr'),th=document.createElement('th'),link=document.createElement('a');th.scope='row';link.textContent=row.faction;link.href='/classic/view_plot?'+new URLSearchParams({players:query.get('num_players')||'4',faction:row.faction,plot:kind});link.target='_blank';link.rel='noopener';th.append(link);tr.append(th);for(const value of values(row)){const td=document.createElement('td');td.textContent=value&&typeof value==='object'?format(value.value)+' · '+value.tile:format(value);tr.append(td);}tbody.append(tr);}}
+  ['Faction',...headings].forEach((label,i)=>{const th=document.createElement('th'),button=document.createElement('button');th.scope='col';button.textContent=label;button.onclick=()=>{direction=sortColumn===i?-direction:1;sortColumn=i;sorted=[...rows].sort((a,b)=>{let av=i===0?a.faction:values(a)[i-1],bv=i===0?b.faction:values(b)[i-1];if(av&&typeof av==='object')av=av.value;if(bv&&typeof bv==='object')bv=bv.value;if(av==null)return bv==null?0:1;if(bv==null)return -1;return direction*(typeof av==='string'?av.localeCompare(bv):av-bv);});for(const header of hr.children)header.removeAttribute('aria-sort');th.setAttribute('aria-sort',direction===1?'ascending':'descending');draw();};th.append(button);hr.append(th);});draw();section.append(table);const note=document.createElement('p');note.className='help';note.textContent=help;section.append(note);ce('comparison-results').append(section);
+ }
+ fetch('/classic/api/comparison?'+query).then(async r=>{const data=await r.json();if(!r.ok)throw Error(data.error||'Comparison unavailable');return data;}).then(data=>{
+  status.textContent=data.players+' players · Historical descriptive aggregates · Base game only';
+  table('Round scoring',data.rounds.join(' / '),['Sum of mean points','Mean win probability (%)','Mean win-probability Δ (pp)'],data.rows,'round-scoring',r=>[r.round.points,r.round.vict_prob,r.round.delta_vict_prob],'Each round is evaluated separately. Points are summed; probabilities and deltas are averaged across six rounds. This is not a joint prediction for the selected setup.');
+  table('Final scoring',data.finals.join(' / '),['Mean points','Win probability (%)','Win-probability Δ (pp)'],data.rows,'final-scoring',r=>[r.final.points,r.final.vict_prob,r.final.delta_vict_prob],'Published averages for the selected final-scoring pair. Δ compares observed win probability with that faction’s historical average.');
+  table('Advanced technology impact on score',data.advanced_tiles.map((t,i)=>comparisonTracks[i]+': '+t).join(' / '),['Highest observed mean score','Highest frequency-weighted score','Sum of frequency-weighted scores'],data.rows,'advanced-tech-score',r=>[r.advanced.max_score,r.advanced.max_weighted_score,r.advanced.weighted_sum],'Weight = taken / (taken + missed) on each selected track, including Gaia. Maxima use observed tracks only; the sum requires observations on all six tracks. These are descriptive indices, not expected total VP or causal technology effects.');
+ }).catch(error=>{ce('comparison-results').replaceChildren();status.textContent=error.message;});
+}

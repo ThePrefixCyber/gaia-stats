@@ -17,6 +17,10 @@ from gaia_stats.legacy_plots import (ROOT, PLOTS, LegacyPlotError,
                                     load_historical_csv, make_plot)
 
 
+def historical_plot(*args, **kwargs):
+    return make_plot(*args, methodology="historical", **kwargs)
+
+
 def original_figure(kind, data, faction):
     """Execute unmodified function bodies, capturing the original display call.
 
@@ -72,7 +76,7 @@ class OriginalPlotParityTests(unittest.TestCase):
         before = self.data.copy(deep=True)
         for kind, expected in self.baseline['terrans'].items():
             with self.subTest(kind=kind):
-                figure = make_plot(kind, self.data, faction='terrans')
+                figure = historical_plot(kind, self.data, faction='terrans')
                 self.assertEqual(figure_digest(figure), expected['sha256'])
                 self.assertEqual(len(figure.data), expected['traces'])
         pd.testing.assert_frame_equal(self.data, before)
@@ -81,13 +85,13 @@ class OriginalPlotParityTests(unittest.TestCase):
         for kind in PLOTS:
             with self.subTest(kind=kind):
                 original = original_figure(kind, self.data, 'xenos')
-                adapted = make_plot(kind, self.data, faction='xenos')
+                adapted = historical_plot(kind, self.data, faction='xenos')
                 self.assertEqual(figure_digest(adapted), figure_digest(original))
 
     def test_basic_frequency_denominator_and_dropped_filter(self):
         clean = self.data.loc[self.data[[f'pos_{p}_dropped' for p in range(1, 5)]].eq(False).all(axis=1)]
         total = sum(clean[f'pos_{p}_faction'].eq('terrans').sum() for p in range(1, 5))
-        figure = make_plot('basic-tech-frequency', self.data, faction='terrans')
+        figure = historical_plot('basic-tech-frequency', self.data, faction='terrans')
         tech = '1q_1o'
         for rank, trace in enumerate(figure.data, 1):
             numerator = (clean[f'pos_{rank}_faction'].eq('terrans')
@@ -96,7 +100,7 @@ class OriginalPlotParityTests(unittest.TestCase):
 
     def test_point_sources_keep_bid_adjustment_and_strict_score_cutoff(self):
         clean = self.data.loc[self.data[[f'pos_{p}_dropped' for p in range(1, 5)]].eq(False).all(axis=1)].copy()
-        figure = make_plot('point-sources', self.data, faction='terrans')
+        figure = historical_plot('point-sources', self.data, faction='terrans')
         for trace, rank in zip(figure.data, (4, 3, 2, 1)):
             score = clean[f'pos_{rank}_score'] + clean[f'pos_{rank}_score_bid'].abs()
             mask = clean[f'pos_{rank}_faction'].eq('terrans') & score.gt(100)
@@ -107,14 +111,14 @@ class OriginalPlotParityTests(unittest.TestCase):
     def test_invalid_player_faction_and_schema_fail_explicitly(self):
         for kwargs in ({'players': 3, 'faction': 'terrans'}, {'faction': 'darkanians'}):
             with self.assertRaises(LegacyPlotError):
-                make_plot('basic-tech-score', self.data, **kwargs)
+                historical_plot('basic-tech-score', self.data, **kwargs)
         with self.assertRaisesRegex(LegacyPlotError, 'missing historical column'):
-            make_plot('point-sources', self.data.drop(columns='pos_1_score_bid'), faction='terrans')
+            historical_plot('point-sources', self.data.drop(columns='pos_1_score_bid'), faction='terrans')
         with self.assertRaisesRegex(LegacyPlotError, 'No historical games'):
-            make_plot('basic-tech-score', self.data.iloc[:0], faction='terrans')
+            historical_plot('basic-tech-score', self.data.iloc[:0], faction='terrans')
 
     def test_notebook_top_level_loads_and_display_do_not_run(self):
         with patch.object(pd, 'read_pickle', side_effect=AssertionError('Unpickling forbidden')), \
                 patch.object(pd, 'read_csv', side_effect=AssertionError('Implicit loading forbidden')), \
                 patch.object(go.Figure, 'show', side_effect=AssertionError('Display forbidden')):
-            self.assertEqual(len(make_plot('basic-tech-frequency', self.data, faction='terrans').data), 4)
+            self.assertEqual(len(historical_plot('basic-tech-frequency', self.data, faction='terrans').data), 4)

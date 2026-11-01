@@ -3,7 +3,8 @@
 Only definitions and literal constants from six checked-in notebooks are loaded.
 Notebook imports, data loads, display settings and top-level invocations never run.
 The sole function-body change captures ``fig.show()`` as a returned figure.
-Historical calculations (including quirks) are deliberately retained. This module
+Historical calculations are available explicitly via methodology="historical".
+The default corrects six affected plot families without modifying source notebooks. This module
 is separate from the production WSGI app and requires requirements-plotting.txt.
 """
 import ast
@@ -94,11 +95,11 @@ def load_historical_csv(path=None):
     return pd.read_csv(path or ROOT / 'data/remote_four_players_data.csv')
 
 
-def make_plot(kind, data, *, players=4, faction):
-    """Return one original Plotly Figure for a faction and historical dataframe.
+def make_plot(kind, data, *, players=4, faction, methodology="corrected", min_elo=None, _observations=None):
+    """Return one Plotly figure, corrected by default or explicitly historical.
 
     Does not open a browser, write files, mutate input or load data implicitly.
-    Missing factions/columns fail explicitly rather than inventing zero values.
+    Corrected empty cohorts show no observations; missing columns fail explicitly.
     Use fig.to_html()/write_html() to export the result from an offline caller.
     """
     if kind not in PLOTS:
@@ -109,6 +110,16 @@ def make_plot(kind, data, *, players=4, faction):
         raise LegacyPlotError('Data must contain only the requested player count')
     if data.empty:
         raise LegacyPlotError('No historical games supplied')
+    if methodology not in ('corrected', 'historical'):
+        raise ValueError('Unknown methodology')
+    from .corrected_plots import CORRECTED, make_corrected
+    if methodology == 'corrected' and kind in CORRECTED:
+        try:
+            return make_corrected(kind, data, players, faction, min_elo=min_elo, prepared_rows=_observations)
+        except KeyError as error:
+            raise LegacyPlotError(f'{kind} requires missing historical column {error}') from error
+    if min_elo is not None:
+        raise LegacyPlotError('Elo filtering is implemented for the six corrected plot families only')
     spec = PLOTS[kind]
     namespace = _load_namespace(spec)
     if faction not in namespace['factions']:
@@ -131,4 +142,10 @@ def make_plot(kind, data, *, players=4, faction):
     figures = namespace['_figures']
     if len(figures) != 1:
         raise LegacyPlotError(f'Expected one original figure, received {len(figures)}')
-    return figures[0]
+    figure = figures[0]
+    if methodology == 'corrected':
+        figure.update_layout(title=str(figure.layout.title.text) + ' · legacy bid-restored scores; historical score/quantile cutoffs')
+        for trace in figure.data:
+            if trace.name and trace.name.startswith('rank '):
+                trace.name = trace.name.replace('rank ', 'bid-restored order ') + ' (ties broken by original player order)'
+    return figure

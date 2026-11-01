@@ -32,18 +32,19 @@ ORIGINAL_PLOT_PATHS = {
 
 def is_classic_path(path):
     return (path.startswith('/classic/') or re.match(r'/[234]p/', path) is not None
-            or path == '/view_plot/index.html'
+            or path in ('/view_plot/index.html', '/view_tables/index.html')
             or path in ('/data/two_players_data.csv', '/data/three_players_data.csv',
                         '/data/four_players_data.csv'))
 
 
-def build_cache(cache_root, csv_paths):
+def build_cache(cache_root, csv_paths, comparison_path=None):
     """Build sequentially, then publish a complete cache by atomic pointer swap.
 
     Only one player-count dataframe and one figure are live at a time. Builds
     that fail never replace the current cache. Prior builds are kept for recovery.
     """
     from .legacy_plots import PLOTS, make_plot
+    from .corrected_plots import observations
     import pandas as pd
     from plotly.offline import get_plotlyjs
 
@@ -51,6 +52,7 @@ def build_cache(cache_root, csv_paths):
     root.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix='build-', dir=root))
     manifest = {'schema_version': 1, 'ruleset': 'base', 'source': 'Tim Gladyshev original notebooks',
+                'methodology': 'corrected-v1 (six families); explicitly labelled legacy structure/source views',
                 'datasets': {}, 'plots': list(PLOTS), 'factions': list(FACTIONS)}
     try:
         (stage / 'plots').mkdir()
@@ -63,15 +65,20 @@ def build_cache(cache_root, csv_paths):
             frame = pd.read_csv(source)
             if frame.empty or not frame['num_players'].eq(players).all():
                 raise ValueError(f'{source}: expected nonempty {players}-player data')
-            record = {'games': len(frame), 'sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+            record = {'games': len(frame), 'columns': len(frame.columns),
+                      'sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
                       'download': f'/classic/data/{players}.csv', 'available': {}}
             shutil.copyfile(source, stage / 'data' / f'{players}.csv')
+            try:
+                prepared = observations(frame, players)
+            except KeyError as error:
+                raise ValueError(f"Missing historical column: {error}") from error
             for faction in FACTIONS:
                 if not frame[[f'pos_{p}_faction' for p in range(1, players + 1)]].eq(faction).any(axis=None):
                     continue
                 record['available'][faction] = []
                 for kind in PLOTS:
-                    figure = make_plot(kind, frame, players=players, faction=faction)
+                    figure = make_plot(kind, frame, players=players, faction=faction, _observations=prepared)
                     figure.write_html(stage / 'plots' / f'{players}-{faction}-{kind}.html',
                                       include_plotlyjs='/classic/assets/plotly.min.js', full_html=True)
                     record['available'][faction].append(kind)
@@ -80,6 +87,18 @@ def build_cache(cache_root, csv_paths):
             del frame
         if not manifest['datasets']:
             raise ValueError('Supply at least one historical CSV')
+        if comparison_path is not None:
+            from .legacy_comparison import validate_aggregates
+            comparison_source = Path(comparison_path)
+            aggregates = json.loads(comparison_source.read_text())
+            validate_aggregates(aggregates)
+            if set(aggregates) - set(manifest['datasets']):
+                raise ValueError('Comparison player counts require matching imported CSVs')
+            shutil.copyfile(comparison_source, stage / 'comparisons.json')
+            manifest['comparisons'] = {'player_counts': sorted(aggregates),
+                'sha256': hashlib.sha256(comparison_source.read_bytes()).hexdigest(),
+                'source': 'https://gpstats.dev/dat.json',
+                'kind': 'historical-marginal-aggregates'}
         atomic_json(stage / 'manifest.json', manifest)
         atomic_json(root / 'current.json', {'build': stage.name})
         return manifest
@@ -100,7 +119,8 @@ def _current(cache_root):
 def cache_response(cache_root, path, query):
     """Return bytes/type/download name; strict allowlists prevent path traversal."""
     pages = {'/classic/': 'index.html', '/classic/view_plot': 'plot.html',
-             '/view_plot/index.html': 'plot.html'}
+             '/view_plot/index.html': 'plot.html',
+             '/classic/compare': 'compare.html', '/view_tables/index.html': 'compare.html'}
     csv_aliases = {'/data/two_players_data.csv': '2', '/data/three_players_data.csv': '3',
                    '/data/four_players_data.csv': '4'}
     if path in csv_aliases:
@@ -115,9 +135,16 @@ def cache_response(cache_root, path, query):
     if path in pages:
         page = Path(__file__).resolve().parents[1] / 'web/classic' / pages[path]
         return page.read_bytes(), 'text/html; charset=utf-8', None
+    if path == '/classic/assets/comparison.js':
+        script = Path(__file__).resolve().parents[1] / 'web/classic/comparison.js'
+        return script.read_bytes(), 'application/javascript', None
     base = _current(cache_root)
     if path == '/classic/api/catalog':
         return (base / 'manifest.json').read_bytes(), 'application/json', None
+    if path == '/classic/api/comparison':
+        from .legacy_comparison import compare
+        data = json.loads((base / 'comparisons.json').read_text())
+        return json.dumps(compare(data, query), allow_nan=False).encode(), 'application/json', None
     if path == '/classic/assets/plotly.min.js':
         return (base / 'plotly.min.js').read_bytes(), 'application/javascript', None
     match = re.fullmatch(r'/classic/data/([234])\.csv', path)
@@ -145,6 +172,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cache', required=True)
     parser.add_argument('--csv', action='append', required=True, metavar='PLAYERS=PATH')
+    parser.add_argument('--comparisons', help='Original published dat.json aggregates')
     args = parser.parse_args()
     sources = {}
     for value in args.csv:
@@ -152,7 +180,7 @@ def main():
         if int(players) in sources:
             parser.error('Duplicate player count')
         sources[int(players)] = path
-    manifest = build_cache(args.cache, sources)
+    manifest = build_cache(args.cache, sources, args.comparisons)
     print(json.dumps({players: data['games'] for players, data in manifest['datasets'].items()}))
 
 

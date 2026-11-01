@@ -37,7 +37,7 @@ class LegacyCacheTests(unittest.TestCase):
         response, body = self.request('/classic/')
         self.assertEqual(response['status'], '200 OK')
         for control in ('id="players"', 'id="faction"', 'id="plot"', 'New Tab', 'Here', 'Download data',
-                        'SMS reminders require', 'not available in this local preview'):
+                        'SMS reminders require', 'Comparison unavailable'):
             self.assertIn(control.encode(), body)
         response, body = self.request('/classic/view_plot', 'players=4&faction=terrans&plot=basic-tech-frequency')
         self.assertEqual(response['status'], '200 OK')

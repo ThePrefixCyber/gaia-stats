@@ -4,6 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 from threading import Lock
+from collections import OrderedDict
 from urllib.parse import parse_qs
 
 from .__main__ import ingest, response_for
@@ -11,9 +12,13 @@ from .legacy_cache import is_classic_path
 
 
 class Application:
-    def __init__(self, dataset_path, classic_cache=None):
+    def __init__(self, dataset_path, classic_cache=None, base_cohort=None):
         self.path = Path(dataset_path)
         self.classic_cache = classic_cache
+        self.base_cohort = Path(base_cohort) if base_cohort else None
+        self.cohort_lock = Lock()
+        self.cohort_cache = OrderedDict()
+        self.cohort_cache_bytes = 0
         self.lock = Lock()
         self.dataset = None
         self.version = None
@@ -39,14 +44,56 @@ class Application:
                 self.dataset, self.version = candidate, version
             return self.dataset
 
+    def cohort_response(self, path, filters):
+        from .cohort import response
+        allowed={'ruleset','plot','player_count','faction','min_elo','lf_2p_4qic_mode',
+                 'layout','auction','faction_variant','final_scoring','final_scoring2'}
+        allowed.update(f'round{i}' for i in range(1,7))
+        allowed.update('adv-'+slot for slot in ('terra','nav','int','gaia','eco','sci','ext'))
+        if set(filters)-allowed or any(len(str(v))>200 for v in filters.values()):
+            raise ValueError('Unsupported cohort filter')
+        if filters.get('player_count') and filters['player_count'] not in ('2','3','4'):
+            raise ValueError('Choose 2, 3 or 4 players')
+        # Serialize expensive work per worker. Cache only bounded JSON responses, not rows.
+        with self.cohort_lock:
+            if filters.get('ruleset')=='base' and path.startswith('/cohort/api/'):
+                if self.base_cohort is None:raise ValueError('Base cohort database not configured')
+                from . import base_cohort
+                stat=self.base_cohort.stat()
+                version=('base',stat.st_mtime_ns,stat.st_size)
+                if path=='/cohort/api/catalog':
+                    return json.dumps(base_cohort.catalog(self.base_cohort)).encode(),'application/json'
+                filters=dict(filters)
+                if path=='/cohort/api/stats':filters.setdefault('plot','advanced-tech-frequency')
+                get_data=lambda:base_cohort.dataset(self.base_cohort,filters)
+            else:
+                dataset=self.load();version=('lf',self.version)
+                get_data=lambda:dataset
+            key=(version,path,tuple(sorted(filters.items())))
+            if key in self.cohort_cache:
+                self.cohort_cache.move_to_end(key)
+                return self.cohort_cache[key]
+            result=response(get_data(),path,filters)
+            if path=='/cohort/api/stats' and len(result[0])<=2*1024*1024:
+                self.cohort_cache[key]=result;self.cohort_cache_bytes+=len(result[0])
+                while len(self.cohort_cache)>8 or self.cohort_cache_bytes>16*1024*1024:
+                    _,old=self.cohort_cache.popitem(last=False);self.cohort_cache_bytes-=len(old[0])
+            return result
+
     def __call__(self, environ, start_response):
         status, headers = "200 OK", [("Cache-Control", "no-store")]
         path = environ.get("PATH_INFO", "/")
+        if path == "/" and self.base_cohort is not None:
+            path = "/cohort/"
         filters = {key: values[-1] for key, values in parse_qs(environ.get("QUERY_STRING", "")).items()}
         try:
             if environ.get("REQUEST_METHOD") != "GET":
                 status, body, content_type = "405 Method Not Allowed", b"GET only", "text/plain"
                 headers.append(("Allow", "GET"))
+            elif path.startswith('/cohort/'):
+                body, content_type = self.cohort_response(path, filters)
+                if path == '/cohort/api/export':
+                    headers.append(('Content-Disposition', 'attachment; filename="gaia-cohort.csv"'))
             elif self.classic_cache is not None and is_classic_path(path):
                 from .legacy_cache import cache_response
                 body, content_type, download = cache_response(self.classic_cache, path, filters)
@@ -80,4 +127,5 @@ class Application:
 
 def create_app():
     return Application(os.environ.get("GAIA_DATASET", "data/analysis.json"),
-                       classic_cache=os.environ.get("GAIA_CLASSIC_CACHE"))
+                       classic_cache=os.environ.get("GAIA_CLASSIC_CACHE"),
+                       base_cohort=os.environ.get("GAIA_BASE_COHORT"))
