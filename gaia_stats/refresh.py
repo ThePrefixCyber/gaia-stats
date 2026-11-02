@@ -13,7 +13,7 @@ from .releases import publish,release_lock,utc,current
 class RefreshDeadline(BaseException):pass
 
 
-def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downloads=100,max_seconds=720,dry_run=False):
+def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downloads=100,max_seconds=720,dry_run=False,pagination='cursor'):
     if not 1<=max_pages<=100 or not 0<=max_downloads<=500 or not 1<=max_seconds<=900:
         raise ValueError('Refresh limits exceed release policy')
     root=Path(root)
@@ -35,11 +35,11 @@ def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downlo
                 client=client or ArchiveClient(interval=1.1,attempts=3)
                 for mode in ('lost-fleet','base'):
                     # Always inspect the newest entries, without moving the historical cursor.
-                    head=collect(archive,mode,client=client,max_pages=2,max_downloads=min(20,max_downloads),head_only=True)
+                    head=collect(archive,mode,client=client,max_pages=2,max_downloads=min(20,max_downloads),head_only=True,pagination=pagination)
                     status['passes'][mode+'-head']=head
                     if head['listing_error'] or head['retry']:raise ValueError(mode+' head scan did not complete cleanly')
                     remaining=max_downloads-head['accepted']-head['rejected']-head['retry']
-                    result=collect(archive,mode,client=client,max_pages=max_pages,max_downloads=remaining)
+                    result=collect(archive,mode,client=client,max_pages=max_pages,max_downloads=remaining,pagination=pagination)
                     status['passes'][mode]=result
                     if result['listing_error'] and result.get('listing_error_detail',{}).get('http_status')==400 and not result['retry']:
                         # Discovery failure cannot invalidate independently verified exports.

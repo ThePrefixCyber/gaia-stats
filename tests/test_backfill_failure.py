@@ -9,12 +9,17 @@ from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 from gaia_stats.archive import collect
-from gaia_stats.refresh import run
+from gaia_stats.refresh import run as refresh_run
 from gaia_stats.releases import current,validate
 from gaia_stats.wsgi import ReleaseApplication
 from gaia_stats.__main__ import atomic_json
 from test_archive import FakeClient, game
 import test_releases
+
+
+def run(*args,**kwargs):
+    # Retain explicit regression coverage for the deployed offset failure path.
+    return refresh_run(*args,pagination='offset',**kwargs)
 
 
 class BackfillFailureTests(unittest.TestCase):
