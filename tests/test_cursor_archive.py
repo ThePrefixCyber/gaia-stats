@@ -80,6 +80,39 @@ class CursorArchiveTests(unittest.TestCase):
         self.assertEqual(after,{'status':'ended','at':client.entries[1]['endedAt'],'id':'B'})
         self.assertEqual(result['cursor_checkpoint'][1],1)
 
+    def test_tied_and_null_cursor_boundaries_continue_after_restart_without_gaps(self):
+        for mode in ('base','lost-fleet'):
+            client=CursorClient(['A','B','C','D','E','F'],lf=mode=='lost-fleet')
+            tied='2026-01-20T00:00:00.000Z'
+            for entry in client.entries[:3]:entry['endedAt']=tied
+            for entry in client.entries[3:]:entry['endedAt']=None
+            # Stop after B: C has the same timestamp and must not be skipped.
+            first=self.collect(client,mode,max_pages=1,max_downloads=2)
+            self.assertEqual(json.loads(first['cursor_checkpoint'][0]),{'status':'ended','at':tied,'id':'B'})
+            # A fresh client simulates a new collector process using only saved state.
+            resumed=CursorClient(client.slugs,lf=mode=='lost-fleet')
+            resumed.entries=client.entries
+            second=self.collect(resumed,mode,max_pages=1,max_downloads=2)
+            request=parse_qs(urlsplit(resumed.calls[0]).query)
+            self.assertEqual(request['skip'],['0'])
+            self.assertEqual(json.loads(request['after'][0]),{'status':'ended','at':tied,'id':'B'})
+            self.assertEqual(resumed.exports,['C','D'])
+            self.assertEqual(json.loads(second['cursor_checkpoint'][0]),{'status':'ended','at':None,'id':'D'})
+            self.assertEqual(second['cursor_checkpoint'][1],0)
+            # Restart at D: explicitly send JSON null and use ID to retain E/F.
+            last=CursorClient(client.slugs,lf=mode=='lost-fleet');last.entries=client.entries
+            final=self.collect(last,mode,max_pages=1,max_downloads=2)
+            request=parse_qs(urlsplit(last.calls[0]).query)
+            self.assertEqual(request['skip'],['0'])
+            self.assertEqual(json.loads(request['after'][0]),{'status':'ended','at':None,'id':'D'})
+            self.assertIn('"at":null',request['after'][0])
+            self.assertEqual(last.exports,['E','F'])
+            self.assertEqual(final['cursor_checkpoint'][1],1)
+            self.assertEqual(client.exports+resumed.exports+last.exports,['A','B','C','D','E','F'])
+            with sqlite3.connect(self.root/'archive.sqlite3') as db:
+                records=db.execute('SELECT slug,status,attempts FROM exports WHERE mode=? ORDER BY slug',(mode,)).fetchall()
+            self.assertEqual(records,[(slug,'accepted',1) for slug in client.slugs])
+
     def test_failed_page_keeps_last_token_and_never_marks_complete(self):
         client=CursorClient(['A','B','C','D','E']);client.fail_after=400
         result=self.collect(client,max_pages=3,max_downloads=0)
