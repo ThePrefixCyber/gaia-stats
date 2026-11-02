@@ -1,279 +1,204 @@
 # Gaia Stats
 
-## Deploy on your Ubuntu VPS
+Gaia Project statistics for the base game and Lost Fleet, extending
+[Timothy Gladyshev's original project](https://github.com/TimGladyshev/bgs_data_gaia)
+and the chart families shown at [gpstats.dev](https://gpstats.dev).
+The current application uses a new shared interface with corrected statistics;
+it does not claim pixel-perfect reproduction of Tim's site.
 
-For a fresh Ubuntu 24.04 VPS, run these commands in its SSH session:
+The public deployment is [http://45.76.250.100](http://45.76.250.100).
+As of **2026-11-02 09:22 UTC**, the rebuilt application, GitHub-polling code
+updates and scheduled cursor-based archive refresh were verified running.
+Historical base-game backfill is still incomplete. Use `/healthz` for current
+release counts, discovery checkpoints and refresh status rather than treating
+this README as a live inventory. HTTPS and off-server backups are not established.
 
-```bash
-sudo apt-get update
-sudo apt-get install -y git
-sudo git clone https://github.com/ThePrefixCyber/gaia-stats.git /opt/gaia-stats
-sudo bash /opt/gaia-stats/deploy/install-vps.sh
-```
+## Current statistics and filters
 
-The installer creates a restricted `gaia-stats` service account, installs the small
-web dependency set in a virtual environment, configures Gunicorn with systemd,
-and serves the app through Nginx on port 80. It permits SSH and HTTP/HTTPS before
-enabling UFW. A Vultr firewall, if attached, must also allow inbound TCP 80/443
-and your SSH access. It disables Ubuntu's default Nginx site symlink, not other
-site configurations. Review `deploy/install-vps.sh` before running on a VPS that
-already hosts other applications.
+The root page offers independent base/Lost Fleet modes, 2/3/4-player selection,
+observed factions (including the four new LF factions), minimum individual pregame
+Elo, layout, auction and faction-variant filters, plus round/final scoring and
+available advanced-tech selections. Options depend on the selected dataset;
+missing historical metadata remains unknown. Missing Elo is included without a
+cutoff and excluded when a numeric minimum is set. Mode selections are remembered
+within the browser session.
 
-Open `http://YOUR_SERVER_IP/`. The service starts on boot and survives SSH
-disconnects. The initial dataset contains only four verified examples. The
-dataset and raw imports live in `/var/lib/gaia-stats`, outside the Git checkout,
-and are preserved during code updates. Add a domain and HTTPS before adding
-login credentials or private features; the initial explorer is public/read-only.
+The significant two-player LF **4-QIC → technology** variant has three choices:
+**standard only** (default), **both**, and **variant only**. Classification uses
+explicit BGS option metadata, not faction names. The default excludes that
+variant; it does not remove ordinary three- and four-player LF games.
 
-Pull additional finished games by their BGS slug:
+All eight chart views use the same selected cohort as the faction comparisons,
+round/final/advanced-tech tables and selected player-game CSV:
 
-```bash
-sudo bash /opt/gaia-stats/deploy/pull-games.sh Jubilant-rover-3041 Comfy-snail-3333
-```
+- Basic and advanced technology acquisition frequencies and mean-score plots.
+- Round-one structure treemap.
+- Round and final scoring heatmaps, alongside shared-win heatmaps.
+- Signed VP-source distributions with exact quartiles and min/max whiskers.
 
-Refresh the browser after importing; the dataset reloads automatically. Downloads
-are paced and game IDs are deduplicated during import. Archive-wide discovery and
-automatic scheduling remain future work.
+Sample counts and unavailable observations are shown. Empty selections produce
+no-data results rather than invented zero scores. Separate historical wide-CSV
+links are explicitly **unfiltered** and do not reflect current selections.
 
-Update code and restart without replacing data:
+Current views use one player-game observation, actual final net VP, competition
+ranks and shared credit for tied wins. Auction bids are not added back to rank
+players. Round/final heatmaps show VP earned from the tile or final tile pair in
+**both** modes; conditional final score is separately labelled. Technology
+frequency denominators are observed available player-game opportunities.
 
-```bash
-cd /opt/gaia-stats
-sudo git pull --ff-only
-sudo .venv/bin/pip install -r requirements-web.txt
-sudo systemctl restart gaia-stats
-```
+Raw VP totals reconcile against final scores including the initial 10 points.
+Only verified complete ledgers imply zeros for missing scoring events; historical
+CSV blanks remain unknown. Base raw source categories are phase-aware, LF source
+names retain expansion contributions, and original raw totals remain available.
+Tile-VP denominators exclude unavailable measurements. See
+[SCORING_V2.md](docs/SCORING_V2.md) for these definitions and evidence.
+These are descriptive associations, not causal strategy recommendations or
+skill-adjusted predictions; repeated players contribute repeated observations.
 
-Diagnostics: `sudo journalctl -u gaia-stats -n 50 --no-pager` and
-`sudo systemctl status gaia-stats --no-pager`. Back up `/var/lib/gaia-stats`
-outside this VPS. The optional Render configuration below is an alternative.
+## Data collection and publication
 
-### Manage updates from GitHub without inbound SSH from the agent
+Production combines an eligible historical base CSV seed with accepted public
+BGS raw exports. Matching raw game IDs replace seed observations rather than
+being appended twice. LF is maintained separately. The raw importer rejects
+unknown/conflicting rulesets, solo/Automa, cancelled, incomplete or dropped games,
+and unreconciled VP ledgers. Historical CSV eligibility and provenance are distinct
+from raw-ledger verification: CSV scores are source results, not freshly verified
+raw logs.
 
-After the initial install, optionally enable a systemd deployment timer. Perform
-this bootstrap in your existing working VPS SSH session; it is not a command for
-a development checkout. First inspect the running service and timer, record the
-current commit and per-ruleset counts, and back up `/var/lib/gaia-stats` outside
-the VPS. Stop any existing timer and allow an active update service to finish
-before pulling code. Keep the old commit ID for manual recovery: bootstrap cannot
-recover a pre-pull commit automatically.
+The collector uses the deployed ended-game cursor contract, `endedAt` plus `_id`,
+with one-row lookahead. Cursor migration starts at the head and deduplicates the
+existing queue; it preserves old offset checkpoints and raw provenance. Queue
+entries and cursor advancement commit together. Each refresh checks two newest
+pages first, then resumes historical discovery, with paced requests, bounded
+retries, persistent cooldowns and a resumable download queue. Head downloads
+receive priority over the historical backlog. See
+[CURSOR_DISCOVERY.md](docs/CURSOR_DISCOVERY.md) for protocol evidence and limits.
 
-```bash
-cd /opt/gaia-stats
-sudo systemctl stop gaia-stats-update.timer  # if already installed
-sudo systemctl status gaia-stats-update.service --no-pager
-# Continue only once no updater is running; never edit a dirty live checkout.
-sudo git status --short
-sudo git rev-parse HEAD
-sudo git pull --ff-only
-sudo bash deploy/enable-updates.sh
-```
+Cursor exhaustion means that listing traversal reached its end, **not** that all
+queued exports were accepted or that universal historical coverage is proven.
+API changes, rejected games, missing metadata and concurrent listing changes
+remain relevant. Neither a successful refresh nor a historical CSV seed means
+base backfill is complete.
 
-Bootstrap installs dependencies, runs tests under the app account, restarts the
-app, and verifies its expected commit and both rulesets through Gunicorn and
-Nginx, even when the checkout already equals GitHub main. Polling is enabled only
-after this succeeds. A failed bootstrap leaves polling stopped and needs operator
-attention; it may already have changed dependencies or restarted the app.
+Data lives outside Git under `/var/lib/gaia-stats`. Immutable release directories
+hold `base.sqlite`, `lost-fleet.json` and hash/count manifests. One atomic
+`current.json` pointer selects both modes together. Publication validates the
+candidate and preserves prior player-game identities; requests pin one generation
+and cached results are replaced on a generation change. Missing/corrupt serving
+data fails closed rather than seeding examples.
 
-The VPS then checks `main` every two minutes. Updates require clean tracked files
-and fast-forward history. A lock serializes bootstrap, timer and manual updater
-runs. On unchanged code, the updater still verifies the running commit and both
-rulesets, without restarting. It refuses a missing or empty production dataset
-rather than letting an update silently seed examples.
+Failures normally retain the last good release. A historical-listing HTTP 400
+can still permit independently validated queued exports to publish after clean
+head scans and no export retries. That refresh remains explicitly **degraded**,
+retains the last fully successful refresh time, and exits unsuccessfully. An
+unchanged-data no-op does not advance publication time. No error is treated as
+end-of-history. Details: [BACKFILL_FAILURE.md](docs/BACKFILL_FAILURE.md).
 
-Failed code updates attempt to restore the previous commit, reinstall its web
-dependencies, restart, and verify the previous running commit. `rolled-back`
-means those checks succeeded; `rollback-failed` means recovery is unconfirmed
-and needs operator attention. The process always exits unsuccessfully after a
-failed deployment, including a verified rollback. Recovery to old code without
-commit/count health metadata cannot be verified and reports `rollback-failed`.
-Dependencies share one virtual environment and version ranges are not a lockfile:
-rollback is best effort, not an exact environment restore. This is a single-server
-restart deployment with brief downtime. A broken target can be retried on the
-next poll; stop the timer while investigating repeated failures.
+## Deployment and operations
 
-`/healthz` exposes the running commit, record counts and last updater result,
-including its check time and previous/target commits. These are public non-secret
-metadata. Confirm the initial result is `bootstrap-verified` (or `deployed` if
-main advanced), then verify:
+The current VPS runs Nginx → Gunicorn under a restricted `gaia-stats` service
+account, with one worker/four threads and an external release store. Expensive
+cohort work is serialized across generations and base calculations process bounded
+complete-game batches. Two separate systemd timers have different jobs:
 
-```bash
-sudo systemctl is-enabled gaia-stats-update.timer
-sudo systemctl is-active gaia-stats-update.timer
-sudo systemctl list-timers --all gaia-stats-update.timer --no-pager
-sudo journalctl -u gaia-stats-update -n 80 --no-pager
+| Timer | Purpose | Schedule |
+|---|---|---|
+| `gaia-stats-update.timer` | Test and deploy clean fast-forward changes from GitHub main | Every two minutes |
+| `gaia-stats-data-refresh.timer` | Discover/download public games and publish validated data | 15 minutes after completion, plus up to two minutes jitter |
+
+Refresh runs as the app account, with a lock, 720-second process deadline,
+13-minute service timeout, 512 MiB memory ceiling, and at most 100 export attempts
+per mode per run. Code updates run tests as the app account, restart, and verify
+the expected code SHA, rebuilt root, Plotly asset and both modes through Gunicorn
+and Nginx. Unchanged-code polls also verify health. Degraded archive freshness
+alone does not cause healthy app code to roll back.
+
+For a **new VPS**, cloning this repository is not sufficient to reproduce the
+current application. Review [REBUILT_RELEASE.md](docs/REBUILT_RELEASE.md): provision
+the service, historical CSV seed/database, classic cache including Plotly, raw
+archive, external release store and rebuilt service override; validate access as
+`gaia-stats`, publish a checked generation, and verify both endpoints before
+enabling timers. Do not run VPS bootstrap commands in a development checkout.
+
+`deploy/install-vps.sh` is the older fresh-Ubuntu bootstrap. It configures Nginx,
+UFW and the legacy sample-data service; it does **not** perform the rebuilt-data
+migration or enable both timers. Review its changes before using it, especially
+on a shared server, and do not rerun it over the current deployment.
+`deploy/enable-updates.sh` bootstraps the **code** timer after tests/restart/health
+verification; it does not install the data-refresh timer. Both are already
+configured on the current VPS, not automatically on every new installation.
+
+Inspect the current server without changing it:
+
+```sh
+systemctl status gaia-stats --no-pager
+systemctl list-timers --all gaia-stats-update.timer gaia-stats-data-refresh.timer --no-pager
+journalctl -u gaia-stats-update -u gaia-stats-data-refresh -n 80 --no-pager
 curl -fsS http://127.0.0.1/healthz
-curl -fsS 'http://127.0.0.1/api/analysis?ruleset=base'
-curl -fsS 'http://127.0.0.1/api/analysis?ruleset=lost-fleet'
+curl -fsS 'http://127.0.0.1/cohort/api/stats?ruleset=base&plot=point-sources'
+curl -fsS 'http://127.0.0.1/cohort/api/stats?ruleset=lost-fleet&lf_2p_4qic_mode=include-both&plot=point-sources'
 ```
 
-Compare data hashes/counts with the pre-deployment snapshot and verify the public
-HTTP endpoint as well. After a subsequent poll, `checked_at` should advance and
-state should be `up-to-date`. A complete automatic deployment is established only
-when a later approved commit is fetched, tested and observed running at its exact
-SHA; an unchanged-code check alone is not proof of that cycle.
+Use sudo for service/log access if required. Rebuilt health exposes the running
+code SHA, data release, counts and refresh details. Code-updater results are stored
+separately in `/var/lib/gaia-stats/deploy-status.json` and its journal.
 
-Commit application changes through GitHub; disable polling before editing the
-live checkout. Only grant repository write access to people trusted to deploy
-application code. Disable polling with
-`sudo systemctl disable --now gaia-stats-update.timer`; this does not stop an
-already running update service, so wait for it to finish before manual changes.
-The timer neither collects games nor grants an interactive shell to ChatGPT.
+Commits to main are deployment actions while polling is enabled. Limit repository
+write access accordingly. Pause relevant timers and wait for active jobs before
+manual maintenance. Code rollback is best effort: old dependencies are reinstalled
+into the shared virtual environment, not restored from an exact environment
+snapshot. Restart deployment can cause brief downtime. Repeated broken targets
+can be retried by the timer. Data-only rollback selects a validated prior release;
+retain newer archives rather than restoring an old backup over them. Follow the
+scoped rollback procedure in [REBUILT_RELEASE.md](docs/REBUILT_RELEASE.md).
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ThePrefixCyber/gaia-stats)
+**Operational gaps:** no automatic release retention policy or verified off-server
+backup/restore process is established. Changed generations consume additional disk;
+the publication disk guard fails closed, but is not a retention policy or a limit
+on raw-archive growth. Monitor disk use and refresh freshness. Local snapshots and
+persistent storage are not off-server backups. The public app is read-only over
+HTTP; provision HTTPS before introducing credentials or private features.
 
-## Persistent browser deployment
+## Development and historical compatibility
 
-Click **Deploy to Render**, sign in, authorize this repository and review the
-Blueprint. It creates one paid always-on Python web service and a 1 GB persistent
-disk. At the rates checked on 2026-11-01 this is about **$7.25/month**, before
-additional usage or taxes; review Render's displayed price before deploying.
-Render supplies HTTPS and an `onrender.com` URL, independent of the development
-workspace. No VPS or custom domain is required. Commits to `main` automatically
-redeploy this service.
+Use Python 3.12 and the current web/test dependency set:
 
-The app uses Gunicorn, a read-only HTTP interface and the same analysis code as
-the local explorer. The dataset is stored at `/var/data/gaia/analysis.json`, on
-the persistent disk. The first boot seeds the four regression sample games only
-when no dataset exists. Restarts and deploys preserve an existing dataset.
-This is an initial small-data explorer, not yet a complete archive dashboard.
-
-To pull additional **finished game slugs**, open the service's Render Shell:
-
-```bash
-python -m gaia_stats fetch Jubilant-rover-3041 Comfy-snail-3333 Proper-outpost-7588 Modern-riddle-1723 --directory /var/data/gaia/raw
-python -m gaia_stats ingest /var/data/gaia/raw/*.json --output /var/data/gaia/analysis.json
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-web.txt
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
-Add more game slugs from the BGS finished-game list to the first command, then
-repeat the second command over the entire raw directory. Downloads are sequential
-and paced; unsupported or unreconciled games are reported and excluded. The
-import atomically replaces the dataset and the app reloads it on the next request.
-An entirely invalid import leaves the previous dataset intact. Back up raw files
-and the normalized JSON externally as the archive grows; a persistent disk alone
-is not a backup strategy. Raw exports are not exposed by the web app.
+The historical `requirements.txt` belongs to the original notebooks; it is not
+the current web deployment environment. Tests use reduced public fixtures, not
+the production archive. Local serving of the rebuilt interface needs the seed,
+LF dataset/release and Plotly cache described in the release procedure.
+`GAIA_RELEASE_ROOT` selects the atomic release store; `GAIA_CLASSIC_CACHE` selects
+the separately generated compatibility assets.
 
-**Automatic discovery and scheduled archive refresh are not configured yet.**
-The fetch command currently takes explicit game slugs. The inherited Selenium
-notebook and historical name list remain available for later archive integration.
+`/classic/`, the original notebooks and legacy routes remain for historical and
+compatibility work. Cached plots/aggregates can use older, explicitly labelled
+methods and do not follow the live cohort filters. Original notebook methodology
+is available explicitly through the plotting adapter; current cohort views use
+the corrected definitions above. Some older milestone documents describe earlier
+local-only stages; they are not current deployment-status reports.
 
-For local production-server checks:
+The original notebooks cover name scraping (`fetch_names.ipynb`), JSON fetching
+and parsing (`fetch_jsons.ipynb`, `parse_jsons.ipynb`), basic/advanced technology,
+round-one structures, round/final scoring and VP sources. `texting_app.ipynb`
+contains the original SMS example; SMS is not configured in this deployment.
+The legacy opening explorer, fixture-seeding commands, `deploy/pull-games.sh`
+and `render.yaml` target the older single-JSON application. They are not the
+current release-store update path or a turnkey equivalent of the rebuilt VPS.
 
-```bash
-pip install -r requirements-web.txt
-GAIA_DATASET=data/analysis.json gunicorn 'gaia_stats.wsgi:create_app()' --bind 127.0.0.1:8000
-```
+## Attribution and rules
 
-![screenshot](https://user-images.githubusercontent.com/54454071/191138235-c8122774-90af-40db-a3ca-365aa44c5a8d.png)
+Timothy Gladyshev's [bgs_data_gaia](https://github.com/TimGladyshev/bgs_data_gaia)
+provides the original notebooks, statistical work and historical base data.
+The upstream README identifies that project as MIT-licensed. Preserve upstream
+attribution when reusing its code. This does not establish a licence for every
+asset on gpstats.dev, game artwork, rulebooks or third-party data.
 
-Statistical analysis and texting service [web app](https://gpstats.dev) for a boardgame called Gaia Project. 
-
-Gaia Project is a deterministic perfect-information multiplayer boardgame with a large statespace created by Jens Drögemüller and Helge Ostertag. 
-The competitive euro-style game focuses on economy building, competition for actions/locations, 
-and victory point accumulation.
-This project aims to help (especially new) players analyze the validity of various approaches, develop strategies, and advance their skills.
-
-This repo contains a set of Jupyter Notebooks presenting the code used to create the [app](https://gpstats.dev). These notebooks:
-1. Scrape and parse Gaia Project game data from [boardgamers.space](https://www.boardgamers.space/boardgame/gaia-project)
-2. Create interactive plots to show performance of various strategies
-3. Send SMS turn reminder messages to users on their turn
-
-[Game Rules](https://images.zmangames.com/filer_public/ce/89/ce890bfd-227e-4249-a52a-976bc5f20d19/en_gaia_rulebook_lo.pdf)
-
-[Active Discord Community](https://discord.gg/KwFHt2DQ)
-
-## Installation
-```bash
-pip install -r requirements.txt
-```
-
-## Base Game and Lost Fleet opening explorer
-
-A new dependency-free Python 3.10+ analysis path lives in `gaia_stats/`.
-It runs alongside the original notebooks. The deployed Flask app is not part of
-this repository; the local explorer provides a separate integration surface.
-
-```bash
-# Smoke-test using four reduced, real public game exports (14 player records).
-python -m gaia_stats ingest tests/fixtures/*.json --output data/analysis.json
-python -m gaia_stats serve --dataset data/analysis.json
-# Open http://127.0.0.1:8000
-python -m unittest discover -s tests -v
-```
-
-For actual analysis, supply downloaded BGS game JSON files or the existing
-newline-delimited `data/game_data_raw.txt` instead of the fixture glob.
-The importer deduplicates games and reports rejected records in its output.
-The sample collection is too small to recommend strategies.
-
-The **Base Game** and **Lost Fleet** tabs have independent filters and CSV
-downloads. Both API endpoints require an explicit `ruleset=base` or
-`ruleset=lost-fleet`; there is no combined statistics mode. The parser uses
-explicit BGS expansion flags, never faction names, and rejects unknown or
-conflicting expansion configurations, cancelled/incomplete games, solo/Automa,
-withdrawn players, and games with unreconciled score ledgers.
-
-Each player record retains round-one build sequence and original opening moves,
-the six round scorings, final scorings, available technologies, map configuration,
-opponent factions, bid, Elo and expansion state. VP sources retain BGS identifiers
-so new ship/artifact sources are not silently discarded. Final score is verified
-against all logged VP changes plus the initial 10 VP. Actual net final scores
-determine rank; ties share first-place credit. Bid is exposed separately.
-
-The explorer includes **All skill levels**, **Top players** and **Custom Elo
-cutoff** modes. All skill levels includes unrated records. Top players selects
-records at or above the 90th percentile of pregame Elo, computed separately for
-each ruleset and player count before faction/scoring filters. The threshold and
-rated reference sample count are shown; ties are included. This is the top 10%
-of player-game ratings in the imported dataset, not the top 10% of unique players
-or a platform-wide leaderboard. Frequent players contribute multiple records.
-Custom mode accepts a numeric minimum individual starting Elo. An additional
-minimum **table-average Elo** filter preserves the approach used in
-`stats_workbook.ipynb` (`MIN_AVG_ELO = 200`); it is independent of player-skill mode
-and is off by default. Each ruleset tab remembers its own selections.
-
-The explorer filters by faction, opponents, player count, scoring tiles,
-technology, player skill, table-average Elo, layout, auction and balance settings. Opening groups
-remain split by faction, player count, layout, auction and balance version.
-It shows sample size, observed mean VP, win share and mean Elo; fewer than five
-samples is labelled limited evidence. Five samples is a display threshold, not
-a statistical significance claim. Results are descriptive, not causal estimates
-or proven optimal openings. Elo filtering is not skill adjustment. Exact map
-geometry and full opening actions are retained for later analysis; the current
-groups compare building sequences, not complete action policies.
-
-Next integration work: connect Tim's production archive/update job, add these
-ruleset tabs to the deployed app, broaden fixtures to cover Darkanians and all
-expansion mechanics, and add conditional comparisons for ship exploration,
-artifacts, booster/technology choices and map geometry. Existing notebooks and
-their base-game outputs remain unchanged.
-
-## Notebooks
-
-#### <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/texting_app.ipynb"><img src="https://img.shields.io/badge/nbviewer-texting__app-informational"/></a>
-Working example of a simple Flask app that allows registration features, and a threaded texting service.
-<br></br>
-#### <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/fetch_names.ipynb"><img src="https://img.shields.io/badge/nbviewer-fetch__names-informational"/></a>
-Uses Selenium to scrape names for all completed games. Names are used to create links to the game data api.
-<br></br>
-#### <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/fetch_jsons.ipynb"><img src="https://img.shields.io/badge/nbviewer-fetch__jsons-informational"/></a>
-Fetches jsons from the game data [api](https://www.boardgamers.space/api/game/Modern-riddle-1723) and stores locally as raw json.
-<br></br>
-#### <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/parse_jsons.ipynb"><img src="https://img.shields.io/badge/nbviewer-parse__jsons-informational"/></a>
-Parses json game data to pandas df and saves as pickle or csv.
-<br></br>
-### others:
-Create the plotly figures for the site. 
-* <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/advanced_techs.ipynb"><img src="https://img.shields.io/badge/nbviewer-advanced__techs-informational"/></a> : advanced technology tile frequency, impact on win probability/score
-* <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/basic_tech.ipynb"><img src="https://img.shields.io/badge/nbviewer-basic__tech-informational"/></a> : standard technology tile tile frequency, impact on win probability/score
-* <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/final_scorings_deltas.ipynb"><img src="https://img.shields.io/badge/nbviewer-final__scoring__deltas-informational"/></a> : final scoring tile impact on win probability/score
-* <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/r1_strucs.ipynb"><img src="https://img.shields.io/badge/nbviewer-r1__structs-informational"/></a> : round one structures frequency and impact on score
-* <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/round_scoring.ipynb"><img src="https://img.shields.io/badge/nbviewer-round__scoring-informational"/></a> : round scoring impact on win probability/score
-* <a href="https://nbviewer.org/github/TimGladyshev/bgs_data_gaia/blob/master/scoring_methods.ipynb"><img src="https://img.shields.io/badge/nbviewer-scoring__methods-informational"/></a> : score distribution over possible sources and resulting position
-
-
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change. I will add any new plots to the site.
-
-## License
-[MIT](https://choosealicense.com/licenses/mit/)
+Rules references: [official base rulebook](https://capstone-games.com/cdn/shop/files/Gaia-Project-Rules-CG.0609sm2_1.pdf?v=15399621975902927537)
+and [official Lost Fleet rulebook](https://capstone-games.com/cdn/shop/files/GP_Exp_Rule_EN_V1_Web.pdf?v=6134275372584409409).
+Game records come from [boardgamers.space](https://www.boardgamers.space/boardgame/gaia-project).
