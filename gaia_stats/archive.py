@@ -199,6 +199,14 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                         raise ValueError('Listing page exceeds requested size')
                 except (OSError, ValueError, TypeError) as error:
                     summary['listing_error'] = str(error)
+                    summary['listing_error_detail'] = {'url': url, 'offset': offset,
+                        'http_status': error.code if isinstance(error, HTTPError) else None}
+                    if isinstance(error, HTTPError):
+                        # Public response evidence, bounded independently of export bodies.
+                        try:
+                            summary['listing_error_detail']['body'] = error.read(4096).decode('utf-8', errors='replace')
+                        except OSError:
+                            pass
                     if isinstance(error, HTTPError) and (error.code == 429 or retry_after_seconds(error, now()) > 0):
                         db.execute('INSERT OR REPLACE INTO cooldowns VALUES (?,?)',
                                    (ORIGIN, now() + max(60, retry_after_seconds(error, now()))))
