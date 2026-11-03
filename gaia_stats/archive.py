@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 from .__main__ import atomic_json
 from .analysis import normalize, ruleset
-from .identifiers import valid_slug
+from .identifiers import valid_slug,url_segment
 
 ORIGIN = 'https://boardgamers.space'
 MAX_BODY = 64 * 1024 * 1024
@@ -329,7 +329,7 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                 "AND status IN ('pending','retry') AND retry_at<=?" + scope + ' ORDER BY rowid LIMIT ?',
                 parameters + [0 if blocked else max_downloads]).fetchall()
             for slug, attempts in queue:
-                url = ORIGIN + '/api/gameplay/' + slug
+                url = ORIGIN + '/api/gameplay/' + url_segment(slug)
                 fetched_at = datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).isoformat()
                 digest = None
                 rate_until = 0

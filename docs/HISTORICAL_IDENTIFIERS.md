@@ -1,5 +1,10 @@
 # Historical listing identifier correction
 
+This records the first, leading-hyphen repair. The later evidence-based character
+set and URL encoding update is documented in
+[HISTORICAL_PUNCTUATION.md](HISTORICAL_PUNCTUATION.md); that update supersedes the
+initial single-leading-hyphen restriction described below.
+
 On 2026-11-03, base cursor discovery stopped after `Polite-mind-1174` at
 `2021-12-15T14:34:58.633Z`, with 1712 committed pages and an incomplete cursor
 checkpoint. The collector rejected the next page before advancing its queue or

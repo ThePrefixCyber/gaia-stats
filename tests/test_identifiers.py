@@ -22,9 +22,9 @@ HISTORICAL_ID='-remote-Christmas-party'
 
 class IdentifierTests(unittest.TestCase):
     def test_exact_verified_identifier_and_length_limits(self):
-        for value in (HISTORICAL_ID,'A','A'*121,'-'+'A'*120):
+        for value in (HISTORICAL_ID,'A','A'*121,'-'+'A'*120,'-','--name'):
             self.assertTrue(valid_slug(value))
-        for value in ('','-','--name','_name','A'*122,'-'+'A'*121,None,123,
+        for value in ('','_name','A'*122,'-'+'A'*121,None,123,
                       '../secret','-../secret','a/b','a\\b','/absolute','a%2Fb',
                       'a?b','a#b','a\n','a\0','é','a b','a.b'):
             with self.subTest(value=value):
@@ -53,7 +53,7 @@ class IdentifierTests(unittest.TestCase):
             root=Path(folder)
             with sqlite3.connect(root/'archive.sqlite3') as db:
                 db.execute('CREATE TABLE exports (mode TEXT,slug TEXT,status TEXT,sha256 TEXT)')
-            for slug in ('../secret','-../secret','a/b','a%2Fb','--unknown'):
+            for slug in ('../secret','-../secret','a/b','a%2Fb','--../unknown'):
                 with sqlite3.connect(root/'archive.sqlite3') as db:
                     db.execute('DELETE FROM exports')
                     db.execute('INSERT INTO exports VALUES (?,?,?,?)',('base',slug,'accepted','bad'))

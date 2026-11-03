@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from .analysis import normalize
 from .__main__ import atomic_json
-from .identifiers import valid_slug
+from .identifiers import valid_slug,url_segment
 
 
 def fetch_games(slugs, directory):
@@ -20,10 +20,12 @@ def fetch_games(slugs, directory):
         if index:
             time.sleep(1)
         try:
-            request = Request("https://www.boardgamers.space/api/gameplay/" + slug,
+            request = Request("https://www.boardgamers.space/api/gameplay/" + url_segment(slug),
                               headers={"User-Agent": "GaiaStats/0.1 (+https://github.com/ThePrefixCyber/gaia-stats)"})
             with urlopen(request, timeout=30) as response:
                 game = json.load(response)
+            if not isinstance(game,dict) or game.get('slug')!=slug:
+                raise ValueError('Export slug does not match request')
             rows = normalize(game)
             if any(not r["score_verified"] for r in rows):
                 raise ValueError("VP ledger mismatch")
