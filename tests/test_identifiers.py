@@ -77,6 +77,27 @@ class IdentifierPublicationTests(unittest.TestCase):
     setUp=test_releases.ReleaseTests.setUp
     publish=test_releases.ReleaseTests.publish
 
+    def test_reported_tenth_retained_row_becomes_cursor_and_preserves_lookahead(self):
+        from urllib.parse import parse_qs,urlsplit
+        slugs=['Row-'+str(i) for i in range(9)]+[HISTORICAL_ID,'Correct-heart-5433']
+        client=CursorClient(slugs,lf=False)
+        client.entries[9]['endedAt']='2021-12-15T05:37:34.775Z'
+        first=collect(self.archive,'base',client=client,pagination='cursor',max_pages=1,max_downloads=10)
+        expected={'status':'ended','at':'2021-12-15T05:37:34.775Z','id':HISTORICAL_ID}
+        self.assertEqual(json.loads(first['cursor_checkpoint'][0]),expected)
+        self.assertEqual(first['cursor_checkpoint'][1],0)
+        self.assertEqual(client.exports,slugs[:10])
+        with sqlite3.connect(self.archive/'archive.sqlite3') as db:
+            self.assertIsNone(db.execute('SELECT slug FROM exports WHERE slug="Correct-heart-5433"').fetchone())
+        resumed=CursorClient(slugs,lf=False);resumed.entries=client.entries
+        second=collect(self.archive,'base',client=resumed,pagination='cursor',max_pages=1,max_downloads=10)
+        query=parse_qs(urlsplit(resumed.calls[0]).query)
+        self.assertEqual(json.loads(query['after'][0]),expected)
+        self.assertEqual(query['skip'],['0'])
+        self.assertEqual(resumed.exports,['Correct-heart-5433'])
+        self.assertEqual(second['cursor_checkpoint'][1],1)
+        self.assertEqual(client.exports+resumed.exports,slugs)
+
     def test_actual_identifier_in_lookahead_resume_export_and_publication(self):
         before=self.publish();prior=current(self.store);seed=self.seed.read_bytes()
         slugs=['Row-'+str(i) for i in range(10)]+[HISTORICAL_ID,'Older']

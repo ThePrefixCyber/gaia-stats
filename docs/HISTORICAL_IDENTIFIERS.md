@@ -4,9 +4,11 @@ On 2026-11-03, base cursor discovery stopped after `Polite-mind-1174` at
 `2021-12-15T14:34:58.633Z`, with 1712 committed pages and an incomplete cursor
 checkpoint. The collector rejected the next page before advancing its queue or
 cursor. Independently inspected public response evidence supplied by the connected
-worker identifies row 10 (the lookahead row) as `_id: -remote-Christmas-party`,
+worker identifies row 10 (the last retained row of a ten-record page) as
+`_id: -remote-Christmas-party`,
 `endedAt: 2021-12-15T05:37:34.775Z`, status ended, base game. The page returned HTTP
-200. The leading hyphen conflicts with our old alphanumeric-first validator;
+200. Row 11, `Correct-heart-5433`, is the lookahead. The leading hyphen conflicts
+with our old alphanumeric-first validator;
 the listing itself is not evidence of a malformed game.
 
 The fix shares one identifier validator between listing/cursor parsing, explicit
@@ -40,7 +42,8 @@ identifier defect directly rather than making an unverified page pass or treatin
 it as end-of-history.
 
 Tests use the actual public ID and timestamp with a renamed existing normalized
-fixture to exercise lookahead, cursor resume, export storage and publication.
+fixture to exercise the reported retained-row boundary and next cursor, plus a
+separate lookahead placement, cursor resume, export storage and publication.
 They do not claim independent validation of the real historical gameplay export.
 Direct BGS access remains outside this executor's configured network allowlist;
 the actual listing evidence came from the connected worker. Traversal/length
