@@ -17,6 +17,7 @@ from .__main__ import atomic_json
 from .analysis import normalize
 from .cohort import enrich
 from .scoring import NORMALIZATION_VERSION
+from .identifiers import valid_slug
 
 
 def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -53,7 +54,7 @@ def accepted_exports(archive,mode):
     if not (archive/'archive.sqlite3').exists():return
     with sqlite3.connect((archive/'archive.sqlite3').resolve().as_uri()+'?mode=ro',uri=True) as db:
         for slug,sha in db.execute('SELECT slug,sha256 FROM exports WHERE mode=? AND status="accepted" ORDER BY slug',(mode,)):
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,120}',slug):raise ValueError('Unsafe archive identifier')
+            if not valid_slug(slug):raise ValueError('Unsafe archive identifier')
             path=archive/mode/'raw'/(slug+'.json')
             if digest(path)!=sha:raise ValueError('Accepted archive hash mismatch: '+slug)
             payload=json.loads(path.read_text());rows=enrich(payload,normalize(payload))

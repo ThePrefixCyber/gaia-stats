@@ -1,19 +1,19 @@
 """Small, deliberate BGS downloads. Archive discovery/scheduling is a separate job."""
 import json
 from pathlib import Path
-import re
 import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from .analysis import normalize
 from .__main__ import atomic_json
+from .identifiers import valid_slug
 
 
 def fetch_games(slugs, directory):
     failures = 0
     for index, slug in enumerate(dict.fromkeys(slugs)):
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,120}", slug):
+        if not valid_slug(slug):
             print(f"Rejected invalid game slug: {slug!r}")
             failures += 1
             continue

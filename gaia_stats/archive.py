@@ -16,7 +16,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-import re
 import sqlite3
 import time
 from urllib.error import HTTPError, URLError
@@ -25,9 +24,9 @@ from urllib.request import Request, urlopen
 
 from .__main__ import atomic_json
 from .analysis import normalize, ruleset
+from .identifiers import valid_slug
 
 ORIGIN = 'https://boardgamers.space'
-SLUG = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,120}\Z')
 MAX_BODY = 64 * 1024 * 1024
 
 
@@ -106,13 +105,25 @@ def listing_entries(payload):
     return payload
 
 
+class ListingIdentifierError(ValueError):
+    def __init__(self,message,entry):
+        super().__init__(message)
+        self.evidence={}
+        for key in ('_id','slug'):
+            if key in entry:
+                value=entry[key]
+                self.evidence[key]={'type':type(value).__name__}
+                if isinstance(value,str):
+                    self.evidence[key].update(value=value[:160],length=len(value))
+
+
 def listing_slug(entry):
     """The live public listing uses _id; older saved envelopes used slug."""
     if entry.get('slug') and entry.get('_id') and entry['slug'] != entry['_id']:
-        raise ValueError('Conflicting listing identifiers')
+        raise ListingIdentifierError('Conflicting listing identifiers',entry)
     slug = entry.get('_id') or entry.get('slug')
-    if not isinstance(slug, str) or not SLUG.fullmatch(slug):
-        raise ValueError('Invalid listing identifier')
+    if not valid_slug(slug):
+        raise ListingIdentifierError('Invalid listing identifier',entry)
     return slug
 
 
@@ -238,7 +249,12 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                     if len(entries) > query['count']:
                         raise ValueError('Listing page exceeds requested size')
                     if pagination=='cursor':
-                        tokens=[listing_cursor(entry) for entry in entries]
+                        tokens=[]
+                        for index,entry in enumerate(entries):
+                            try:tokens.append(listing_cursor(entry))
+                            except ListingIdentifierError as error:
+                                error.evidence['page_index']=index
+                                raise
                         ids=[listing_slug(entry) for entry in entries]
                         if len(set(ids))!=len(ids) or (after and json.loads(after)['id'] in ids):
                             raise ValueError('Cursor page duplicates an identity or repeats its boundary')
@@ -253,6 +269,8 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                     summary['listing_error_detail'] = {'url': url, 'offset': offset,
                         'http_status': error.code if isinstance(error, HTTPError) else None}
                     if pagination=='cursor':summary['listing_error_detail'].update(offset=0,after=after)
+                    if isinstance(error,ListingIdentifierError):
+                        summary['listing_error_detail'].update(kind='invalid-listing-identifier',entry=error.evidence)
                     if isinstance(error, HTTPError):
                         # Public response evidence, bounded independently of export bodies.
                         try:
