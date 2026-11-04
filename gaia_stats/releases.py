@@ -19,6 +19,7 @@ from .cohort import enrich
 from .scoring import NORMALIZATION_VERSION
 from .score_basis import SCORE_BASIS_VERSION, analysis_rows
 from .identifiers import valid_slug
+from .release_data import load_dataset, write_dataset, encoded
 from .eligibility import (BASE_ELIGIBLE_SQL, POLICY_VERSION, eligible_rows,
                           excluded_export, excluded_ids, stored_exclusions, SUPPORTED_POLICY_VERSIONS, require_safe_policy)
 
@@ -161,7 +162,7 @@ def validate(path,previous=None,*,allowed_exclusions=(),known_exclusions=()):
         base_games,base_records=db.execute('SELECT COUNT(DISTINCT game_id),COUNT(*) FROM observations').fetchone()
         for (payload,) in db.execute('SELECT payload FROM observations'):
             if json.loads(payload)['ruleset']!='base':raise ValueError('Mixed base database')
-    lf=json.loads((path/'lost-fleet.json').read_text())['rows']
+    lf=load_dataset(path/'lost-fleet.json')['rows']
     lf_ids={(r['game_id'],r['faction']) for r in lf}
     if len(lf_ids)!=len(lf) or any(r['ruleset']!='lost-fleet' or not r['score_verified'] for r in lf):raise ValueError('Invalid LF release rows')
     counts={'base':{'games':base_games,'records':base_records},'lost-fleet':{'games':len({x[0] for x in lf_ids}),'records':len(lf)}}
@@ -176,7 +177,7 @@ def validate(path,previous=None,*,allowed_exclusions=(),known_exclusions=()):
         if len(eligible_rows(lf))!=len(lf) or len(base_ids(path/'base.sqlite',eligible=True))!=base_records:
             raise ValueError('Excluded game in published release')
     if previous:
-        old_lf=json.loads((previous/'lost-fleet.json').read_text())['rows']
+        old_lf=load_dataset(previous/'lost-fleet.json')['rows']
         allowed=set(allowed_exclusions)
         required_lf={(r['game_id'],r['faction']) for r in eligible_rows(old_lf) if r['game_id'] not in allowed}
         required_base={identity for identity in base_ids(previous/'base.sqlite',eligible=True) if identity[0] not in allowed}
@@ -222,7 +223,7 @@ def publish(root,seed_base,archive,legacy=None,*,dry_run=False):
         shutil.copyfile(previous/'base.sqlite' if previous else seed_base,stage/'base.sqlite')
         lf={}
         if previous:
-            for row in json.loads((previous/'lost-fleet.json').read_text())['rows']:lf.setdefault(row['game_id'],[]).append(row)
+            for row in load_dataset(previous/'lost-fleet.json')['rows']:lf.setdefault(row['game_id'],[]).append(row)
         legacy_groups=defaultdict(list)
         legacy_exclusions = set()
         if legacy:

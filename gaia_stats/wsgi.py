@@ -10,6 +10,7 @@ from collections import OrderedDict
 from urllib.parse import parse_qs
 
 from .eligibility import eligible_rows, require_safe_policy
+from .release_data import load_dataset
 from .__main__ import ingest, response_for
 from .legacy_cache import is_classic_path
 
@@ -53,7 +54,7 @@ class Application:
             info = self.path.stat()
             version = (info.st_mtime_ns, info.st_size)
             if version != self.version:
-                candidate = json.loads(self.path.read_text())
+                candidate = load_dataset(self.path)
                 if candidate.get("schema_version") != 1 or not isinstance(candidate.get("rows"), list):
                     raise ValueError("Unsupported dataset")
                 require_safe_policy(candidate.get("eligibility_policy"))
