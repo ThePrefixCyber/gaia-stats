@@ -17,7 +17,7 @@ this README as a live inventory. HTTPS and off-server backups are not establishe
 
 The root page offers independent base/Lost Fleet modes, 2/3/4-player selection,
 observed factions (including the four new LF factions), minimum individual pregame
-Elo, layout, auction and faction-variant filters, plus round/final scoring and
+Elo, layout and auction filters, plus round/final scoring and
 available advanced-tech selections. Options depend on the selected dataset;
 missing historical metadata remains unknown. Missing Elo is included without a
 cutoff and excluded when a numeric minimum is set. Mode selections are remembered
