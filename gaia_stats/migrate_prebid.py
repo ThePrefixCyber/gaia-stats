@@ -18,7 +18,7 @@ from .archive import archive_lock
 from .releases import current, validate, known_exclusions, publish, release_lock, digest, utc, source_identity
 from .score_basis import SCORE_BASIS_VERSION
 from .eligibility import POLICY_VERSION
-from .release_data import load_dataset
+from .release_data import object_path
 
 
 def prepare(destination, source_root, csvs, archive, legacy=None):
@@ -48,13 +48,17 @@ def prepare(destination, source_root, csvs, archive, legacy=None):
         source_hashes={name:digest(original/name) for name in ('base.sqlite','lost-fleet.json','manifest.json')}
         parent=destination.parent
         if not parent.is_dir():raise ValueError('Destination parent must already exist')
-        source_size=sum((original/name).stat().st_size for name in ('base.sqlite','lost-fleet.json','manifest.json'))
+        source_index=json.loads((original/'lost-fleet.json').read_text())
+        source_objects={sha:object_path(original/'lost-fleet.json',sha) for sha in source_index.get('games',{}).values()} if source_index.get('storage') else {}
+        object_bytes=sum(path.stat().st_size for path in source_objects.values())
+        source_size=sum((original/name).stat().st_size for name in ('base.sqlite','lost-fleet.json','manifest.json'))+object_bytes
         required=max(1024**3,4*source_size+2*sum(path.stat().st_size for path in csvs.values())+512*1024**2)
         if shutil.disk_usage(parent).free < required:
             raise ValueError(f'Insufficient staging disk space: need at least {required} free bytes; no source data changed')
         destination.mkdir(mode=0o750)
         record={'state':'preparing','started_at':utc(),'source_release':original.name,
                 'source_hashes':source_hashes,'required_free_bytes':required,
+                'source_lf_object_count':len(source_objects),'source_lf_object_bytes':object_bytes,
                 'csvs':{str(count):{'path':str(path),'sha256':digest(path)} for count,path in csvs.items()},
                 'score_basis_version':SCORE_BASIS_VERSION,'eligibility_policy':POLICY_VERSION}
         atomic_json(destination/'preparation.json',record)
@@ -65,10 +69,13 @@ def prepare(destination, source_root, csvs, archive, legacy=None):
             baseline=store/'releases'/original.name
             baseline.parent.mkdir(parents=True)
             shutil.copytree(original,baseline)
-            # Copy the small LF object set when staging an already incremental
-            # release. Never make the new bundle depend on old-store paths.
-            if (source_root/'objects/lost-fleet').exists():
-                shutil.copytree(source_root/'objects/lost-fleet',store/'objects/lost-fleet')
+            # Only selected objects are needed by this preserved baseline. Keep
+            # unrelated old/temporary objects in their original store unchanged.
+            for sha,path in source_objects.items():
+                target=object_path(baseline/'lost-fleet.json',sha)
+                target.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(path,target)
+                if digest(target)!=sha:raise ValueError('LF object changed during staging')
             atomic_json(store/'current.json',{'release':original.name})
             if registry.exists():shutil.copyfile(registry,store/'exclusions.json')
             expected_inputs=source_identity(seed,archive,legacy)

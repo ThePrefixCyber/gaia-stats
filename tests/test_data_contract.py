@@ -150,6 +150,19 @@ class DataContractTests(unittest.TestCase):
         self.write(path, index); self.rehash()
         with self.assertRaisesRegex(ValueError, 'Invalid LF object index'):self.check()
 
+    def test_storage_contract_requires_static_seed_and_indexed_lf(self):
+        self.contract.update(schema_version=2,base_source_policy='original-csv-only-v1',lf_storage='content-addressed-games-v1')
+        self.write(self.contract_path,self.contract)
+        with self.assertRaisesRegex(ValueError,'Base source policy'):self.check()
+        self.manifest['base_source_policy']='original-csv-only-v1';self.rehash()
+        with self.assertRaisesRegex(ValueError,'LF storage'):self.check()
+        self.index_lost_fleet()
+        with sqlite3.connect(self.release/'base.sqlite') as db:
+            db.execute("INSERT INTO metadata VALUES ('base_source_policy','original-csv-only-v1')")
+        self.rehash();self.check()
+        self.edit_row(lambda row:row.update(raw_overlay=True))
+        with self.assertRaisesRegex(ValueError,'exactly match'):self.check()
+
     def test_ready_contract_is_read_only_and_accepts_older_source_normalization(self):
         before = {p:p.read_bytes() for p in self.bundle.rglob('*') if p.is_file()}
         result = self.check()

@@ -1,1 +1,1 @@
-{"schema_version":1,"eligibility_policy":3,"score_basis_version":"prebid-v1","normalization_version":3}
+{"schema_version":2,"eligibility_policy":3,"score_basis_version":"prebid-v1","normalization_version":3,"base_source_policy":"original-csv-only-v1","lf_storage":"content-addressed-games-v1"}

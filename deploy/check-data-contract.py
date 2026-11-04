@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from itertools import zip_longest
 
 
 def read_json(path):
@@ -144,11 +145,14 @@ def check_sqlite(path, contract, blocked, label):
 
 def contract_value(path):
     value = read_json(path)
-    require(isinstance(value, dict) and value.get('schema_version') == 1, 'Unsupported deployment contract')
+    require(isinstance(value, dict) and value.get('schema_version') in (1,2), 'Unsupported deployment contract')
     require(type(value.get('eligibility_policy')) is int and value['eligibility_policy'] > 0, 'Invalid eligibility requirement')
     require(isinstance(value.get('score_basis_version'), str) and value['score_basis_version'], 'Invalid score-basis requirement')
     require(type(value.get('normalization_version')) is int and value['normalization_version'] > 0, 'Invalid normalization requirement')
     require(finite(value.get('minimum_score', 100)), 'Invalid score floor')
+    if value['schema_version']==2:
+        require(value.get('base_source_policy')=='original-csv-only-v1', 'Unsupported base source contract')
+        require(value.get('lf_storage')=='content-addressed-games-v1', 'Unsupported LF storage contract')
     return dict(value, minimum_score=value.get('minimum_score', 100))
 
 
@@ -189,6 +193,16 @@ def check(contract_path, root, seed, cache):
         imports = json.loads(metadata(db).get('imports', '{}'))
     require(isinstance(imports, dict) and bool(imports) and all(key in ('2', '3', '4') for key in imports), 'Seed source-player-count provenance is missing')
     base_counts = check_sqlite(release / 'base.sqlite', contract, blocked, 'Base release')
+    if contract['schema_version']==2:
+        require(manifest.get('base_source_policy')==contract['base_source_policy'], 'Base source policy is not ready')
+        require(read_json(release/'lost-fleet.json').get('storage')==contract['lf_storage'], 'LF storage is not ready')
+        with sqlite3.connect(seed.as_uri()+'?mode=ro',uri=True) as source, \
+             sqlite3.connect((release/'base.sqlite').as_uri()+'?mode=ro',uri=True) as serving:
+            require(metadata(serving).get('base_source_policy')==contract['base_source_policy'], 'Base source metadata is not ready')
+            sql='SELECT game_id,faction,payload FROM observations ORDER BY game_id,faction'
+            expected=(row for row in source.execute(sql) if row[0] not in blocked)
+            require(all(left==right for left,right in zip_longest(expected,serving.execute(sql))),
+                    'Base release does not exactly match the original CSV seed minus verified exclusions')
     lf_counts = check_rows(lost_fleet_rows(release / 'lost-fleet.json', root),
                            contract, 'lost-fleet', blocked, 'Lost Fleet release')
     counts = {'base': base_counts, 'lost-fleet': lf_counts}
