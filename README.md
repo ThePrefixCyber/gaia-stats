@@ -81,39 +81,34 @@ skill-adjusted predictions; repeated players contribute repeated observations.
 
 ## Data collection and publication
 
-Production combines an eligible historical base CSV seed with accepted public
-BGS raw exports. Matching raw game IDs replace seed observations rather than
-being appended twice. LF is maintained separately. Scheduled refresh collects only
-Lost Fleet,
-including its newest games and historical queue. Existing base archives, queued
-exports and published rows are retained without further base collection. This
-change does not yet switch published base statistics to static CSV only.
-The raw importer rejects unknown/conflicting rulesets, solo/Automa, cancelled, incomplete or dropped games,
-and unreconciled VP ledgers. Historical CSV eligibility and provenance are distinct
-from raw-ledger verification: CSV scores are source results, not freshly verified
-raw logs.
+This branch prepares the base-game statistics solely from the original static
+wide CSVs. Pre-bid scores use each player's aligned auction cost; dropped games,
+more-balanced games and games with any known pre-bid score below 100 remain
+excluded. Base raw exports never add or replace served base observations.
+The existing base raw archive, queue and historical release files are preserved.
+Switching an older merged-base release requires the separately reviewed bundle
+migration, not an ordinary scheduled refresh.
 
-The collector uses the deployed ended-game cursor contract, `endedAt` plus `_id`,
-with one-row lookahead. Cursor migration starts at the head and deduplicates the
-existing queue; it preserves old offset checkpoints and raw provenance. Queue
-entries and cursor advancement commit together. Each refresh checks two newest
-Lost Fleet pages first, then resumes its historical discovery, with paced requests,
-bounded retries, persistent cooldowns and a resumable download queue. Head downloads
-receive priority over the historical backlog. See
-[CURSOR_DISCOVERY.md](docs/CURSOR_DISCOVERY.md) for protocol evidence and limits.
+Only Lost Fleet is collected. Each refresh checks two newest pages, then resumes
+its historical queue using `endedAt` plus `_id`, with bounded downloads, pacing,
+retries and persistent checkpoints. Cursor exhaustion does not prove every export
+was accepted. LF still rejects unknown/conflicting rulesets, solo/Automa,
+cancelled, incomplete/dropped games and unreconciled VP ledgers. See
+[CURSOR_DISCOVERY.md](docs/CURSOR_DISCOVERY.md).
 
-Cursor exhaustion means that listing traversal reached its end, **not** that all
-queued exports were accepted or that universal historical coverage is proven.
-API changes, rejected games, missing metadata and concurrent listing changes
-remain relevant. Neither a successful refresh nor a historical CSV seed means
-base backfill is complete.
+Data lives outside Git under `/var/lib/gaia-stats`. A release uses one immutable
+`base.sqlite`, shared by hardlink with later LF-only releases, plus a small
+`lost-fleet.json` index. Each processed LF game is stored once by content hash;
+new generations reuse unchanged objects. Only new/changed LF exports are
+normalized, unless a normalization, score or eligibility version changes.
+An unchanged scan or a base-archive-only change creates no release.
 
-Data lives outside Git under `/var/lib/gaia-stats`. Immutable release directories
-hold `base.sqlite`, `lost-fleet.json` and hash/count manifests. One atomic
-`current.json` pointer selects both modes together. Publication validates the
-candidate and preserves prior player-game identities; requests pin one generation
-and cached results are replaced on a generation change. Missing/corrupt serving
-data fails closed rather than seeding examples.
+One atomic `current.json` pointer selects both modes. Publication validates every
+referenced object and preserves LF identities except verified exclusions. Old
+inline LF releases remain readable. The static-base transition records which
+base observations remain only in the preserved old release, rather than deleting
+them. Requests pin a generation and fail closed on corrupt/missing data. See
+[STORAGE_V2.md](docs/STORAGE_V2.md) for the storage model, review and rollback plan.
 
 Failures normally retain the last good release. A historical-listing HTTP 400
 can still permit independently validated queued exports to publish after clean
@@ -180,11 +175,12 @@ can be retried by the timer. Data-only rollback selects a validated prior releas
 retain newer archives rather than restoring an old backup over them. Follow the
 scoped rollback procedure in [REBUILT_RELEASE.md](docs/REBUILT_RELEASE.md).
 
-**Operational gaps:** no automatic release retention policy or verified off-server
-backup/restore process is established. Changed generations consume additional disk;
-the publication disk guard fails closed, but is not a retention policy or a limit
-on raw-archive growth. Monitor disk use and refresh freshness. Local snapshots and
-persistent storage are not off-server backups. The public app is read-only over
+**Operational gaps:** no verified off-server backup/restore process is established.
+The incremental store bounds growth to new/changed LF game objects plus small
+release metadata; historical full-copy generations are not removed automatically.
+Inspect exact redundancy and preserve the archive and required rollback artifacts
+before any separately approved cleanup. The disk guard fails closed. Local
+snapshots and persistent storage are not off-server backups. The public app is read-only over
 HTTP; provision HTTPS before introducing credentials or private features.
 
 ## Development and historical compatibility

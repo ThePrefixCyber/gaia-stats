@@ -122,13 +122,16 @@ The preparation tool:
   four selected-release sizes plus twice the original CSV sizes plus 512 MiB,
   whichever is larger. Publication has its independent disk guard too.
 - Rebuilds the seed from original CSVs, copies the currently selected release into
-  the new store as a preservation baseline, then publishes there with the normal
-  no-loss/verified-exclusion safeguards. It does not rewrite the live store.
-- Preserves raw observations, repairs historical seed overlays, normalizes known
-  preserved raw snapshots and rebuilds all classic charts in the new cache.
-- Verifies every serving score/rank/win and all artifact versions/hashes. Retained
-  unknown historical scores block readiness; an unknown tile/source breakdown
-  does not remove a known player total.
+  the new store as a preservation baseline, then explicitly migrates served base
+  observations to the original CSV seed only. Base raw-only records and raw
+  overlays remain in the old baseline and raw archive; they are not served.
+  LF no-loss and verified-exclusion safeguards remain active.
+- Preserves raw observations, rebuilds historical CSV scoring from aligned bids,
+  incrementally stores verified LF games and rebuilds classic charts in the new
+  cache. Existing indexed LF objects are copied into the independent new store.
+- Verifies every serving score/rank/win and all artifact versions/hashes.
+  Unknown CSV score provenance blocks readiness. Unknown archived base-only
+  records do not need to be imported into the static CSV dataset.
 - Rechecks original input hashes and live-source pointers before marking the
   bundle `ready`. It never changes the active-data link. Failed bundles remain
   marked `failed` for diagnosis and cannot be selected by the app.
@@ -136,7 +139,9 @@ The preparation tool:
 Review before/after counts and the explicit exclusion IDs, not just a successful
 exit. The expected score change includes Nordic Geodens 221 → 236 and Darkanians
 113 → 128. The existing 25-VP historical record remains excluded (31 before bids).
-Verify source hashes remain unchanged and preserved non-excluded IDs still exist.
+Verify source hashes remain unchanged, every prior LF ID remains unless explicitly
+excluded, and the base source migration count matches the intended CSV-only scope.
+All old base IDs remain in the preserved baseline, even when no longer served.
 
 ## 4. Activate during a controlled stop
 

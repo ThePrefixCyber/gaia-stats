@@ -111,43 +111,6 @@ def insert_game(db,slug,rows,replace=False):
         db.execute('INSERT INTO observations VALUES (?,?,?,?,?,?,?,?)',tuple(row.get(k,'unknown') for k in ('game_id','faction','player_count','elo','layout','auction','faction_variant'))+(json.dumps(row,separators=(',',':')),))
 
 
-def refreshed_seed_games(path):
-    """Only a newly rebuilt seed can repair old CSV player/source alignment.
-
-    Read complete games in bounded groups. An old seed is retained as evidence,
-    but its misaligned bid columns must never be relabelled as corrected scores.
-    """
-    with sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True) as db:
-        marker = db.execute("SELECT value FROM metadata WHERE key='score_basis_version'").fetchone()
-        if not marker or marker[0] != SCORE_BASIS_VERSION:
-            return
-        group = []
-        for (payload,) in db.execute('SELECT payload FROM observations ORDER BY game_id,faction'):
-            row = json.loads(payload)
-            if row.get('score_basis_version') != SCORE_BASIS_VERSION or row.get('ruleset') != 'base':
-                raise ValueError('Rebuilt seed contains inconsistent score provenance')
-            if group and row['game_id'] != group[0]['game_id']:
-                yield group[0]['game_id'], group
-                group = []
-            group.append(row)
-        if group:
-            yield group[0]['game_id'], group
-
-
-def overlay_refreshed_seed(db, seed, excluded):
-    """Repair preserved historical rows without downgrading raw-ledger evidence."""
-    for slug, rows in refreshed_seed_games(seed):
-        if slug in excluded:
-            continue
-        if len(rows) != rows[0].get('player_count'):
-            raise ValueError('Rebuilt seed has incomplete player-game rows')
-        existing = [json.loads(value[0]) for value in db.execute(
-            'SELECT payload FROM observations WHERE game_id=?', (slug,))]
-        if any('vp_sources_raw' in row or row.get('normalization_version') is not None for row in existing):
-            continue  # Preserve richer raw results even if their archive is offline.
-        insert_game(db, slug, rows, replace=True)
-
-
 def base_ids(path,eligible=False):
     with sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True) as db:
         return set(db.execute('SELECT game_id,faction FROM observations'+(' WHERE '+BASE_ELIGIBLE_SQL if eligible else '')))
