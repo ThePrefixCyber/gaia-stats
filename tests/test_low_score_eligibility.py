@@ -1,3 +1,4 @@
+from gaia_stats.release_data import load_dataset
 """Pre-bid-score game eligibility, source preservation and policy migration."""
 import copy
 import csv
@@ -150,7 +151,7 @@ class LowScorePublicationTests(unittest.TestCase):
             payload = json.loads(db.execute('SELECT payload FROM observations WHERE game_id="seed-unknown" AND faction="xenos"').fetchone()[0])
             payload['score'] = 25
             db.execute('UPDATE observations SET payload=? WHERE game_id="seed-unknown" AND faction="xenos"', (json.dumps(payload),))
-        data = json.loads((prior/'lost-fleet.json').read_text()); data['rows'][0]['score'] = 25
+        data = load_dataset(prior/'lost-fleet.json'); data.pop('storage',None); data.pop('games',None); data['rows'][0]['score'] = 25
         (prior/'lost-fleet.json').write_text(json.dumps(data))
         manifest = json.loads((prior/'manifest.json').read_text()); manifest['eligibility_policy'] = 1; manifest['inputs']['eligibility_policy'] = 1
         manifest['sha256'] = {name: digest(prior/name) for name in ('base.sqlite', 'lost-fleet.json')}

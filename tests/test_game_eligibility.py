@@ -1,3 +1,4 @@
+from gaia_stats.release_data import load_dataset
 """One mandatory game policy across imports, live/history, queries and publication."""
 import copy
 import csv
@@ -233,7 +234,7 @@ class PublicationEligibilityTests(unittest.TestCase):
             for faction, marker in (('terrans', 'standard'), ('xenos', 'more-balanced')):
                 payload = json.loads(row[-1]); payload.update(game_id='old-base-block', faction=faction, faction_variant='unknown', faction_variant_sources={'data.options': marker})
                 db.execute('INSERT INTO observations VALUES (?,?,?,?,?,?,?,?)', ('old-base-block', faction, 2, 99999, 'unknown', 'unknown', 'unknown', json.dumps(payload)))
-        data = json.loads((path/'lost-fleet.json').read_text())
+        data = load_dataset(path/'lost-fleet.json'); data.pop('storage',None); data.pop('games',None)
         payload = game('old-lf-block'); rows = enrich(payload, normalize(payload)); rows[0]['faction_variant'] = 'more-balanced'; data['rows'] += rows
         (path/'lost-fleet.json').write_text(json.dumps(data))
         manifest = json.loads((path/'manifest.json').read_text())

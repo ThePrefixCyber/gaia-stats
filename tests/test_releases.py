@@ -13,6 +13,7 @@ from gaia_stats.cohort import build as lf_build, enrich
 from gaia_stats.analysis import normalize
 from gaia_stats.releases import publish,current,validate,release_lock,insert_game
 from gaia_stats.refresh import run,RefreshDeadline
+from gaia_stats.release_data import load_dataset
 from gaia_stats.wsgi import ReleaseApplication
 from gaia_stats.archive import collect
 from test_archive import FakeClient,game
@@ -33,6 +34,12 @@ class ReleaseTests(unittest.TestCase):
         self.legacy=self.root/'legacy.json';self.legacy.write_text(json.dumps({'schema_version':1,'rows':enrich(lf,normalize(lf))}))
         self.legacy_bytes=self.legacy.read_bytes()
 
+    def add_legacy_game(self):
+        data=json.loads(self.legacy.read_text())
+        copied=[dict(row,game_id='Second-game') for row in data['rows'][:4]]
+        data['rows'].extend(copied)
+        self.legacy.write_text(json.dumps(data))
+
     def publish(self,**kwargs):
         with release_lock(self.store):return publish(self.store,self.seed,self.archive,self.legacy,**kwargs)
 
@@ -44,7 +51,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn(b'id="mode"',request('/'))
         health=json.loads(request('/healthz'));self.assertEqual(health['datasets']['base']['records'],2)
         request('/cohort/api/stats','ruleset=base');old=app.app;self.assertTrue(old.cohort_cache)
-        self.legacy.write_text(self.legacy.read_text()+' ')
+        self.add_legacy_game()
         second=self.publish();health=json.loads(request('/healthz'));self.assertEqual(health['release'],second['release'])
         self.assertIsNot(app.app,old);self.assertFalse(app.app.cohort_cache)
         from gaia_stats.__main__ import atomic_json
@@ -52,12 +59,12 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(json.loads(request('/healthz'))['release'],first['release'])
         # Fresh process/restart reads exactly the same pointer, without example seeding.
         self.assertEqual(current(self.store).name,first['release'])
-        self.assertEqual(self.legacy.read_bytes(),self.legacy_bytes+b' ')
+        self.assertEqual(len(json.loads(self.legacy.read_text())['rows']),8)
 
     def test_failed_and_dry_run_publication_preserve_pointer(self):
         self.publish();before=(self.store/'current.json').read_bytes()
         self.publish(dry_run=True);self.assertEqual((self.store/'current.json').read_bytes(),before)
-        self.legacy.write_text(self.legacy.read_text()+' ')
+        self.add_legacy_game()
         changed_legacy=self.legacy.read_bytes()
         with patch('gaia_stats.releases.accepted_exports',side_effect=ValueError('bad source')):
             with self.assertRaises(ValueError):self.publish()
@@ -69,33 +76,27 @@ class ReleaseTests(unittest.TestCase):
         with patch('gaia_stats.releases.insert_game'):
             # Directly validate a tampered candidate with internally updated manifest hashes.
             import shutil
-            candidate=self.root/'candidate';shutil.copytree(prior,candidate)
+            candidate=self.store/'releases/release-candidate';shutil.copytree(prior,candidate)
             with sqlite3.connect(candidate/'base.sqlite') as db:db.execute('DELETE FROM observations WHERE faction="terrans"')
             m=json.loads((candidate/'manifest.json').read_text());m['datasets']['base']['records']=1
             m['sha256']['base.sqlite']=hashlib.sha256((candidate/'base.sqlite').read_bytes()).hexdigest();(candidate/'manifest.json').write_text(json.dumps(m))
             with self.assertRaisesRegex(ValueError,'lose'):validate(candidate,prior)
         self.assertEqual(current(self.store),prior)
 
-    def test_version_change_recomputes_existing_accepted_raw_without_download(self):
-        payload=json.loads((FIXTURES/'cohort/Shiny-cypress-1384.json').read_text())
+    def test_version_change_recomputes_existing_accepted_lf_without_download(self):
+        payload=json.loads((FIXTURES/'Jubilant-rover-3041.json').read_text())
         client=FakeClient({payload['slug']:payload})
-        collect(self.archive,'base',client=client,max_pages=1,max_downloads=1)
-        def old_normalize(game):
-            rows=normalize(game)
-            for row in rows:
-                for key in ('scoring_vp','vp_ledger_complete','normalization_version'):
-                    row.pop(key,None)
-            return rows
-        with patch('gaia_stats.releases.NORMALIZATION_VERSION',1), patch('gaia_stats.releases.normalize',side_effect=old_normalize):
+        collect(self.archive,'lost-fleet',client=client,max_pages=1,max_downloads=1)
+        with patch('gaia_stats.releases.NORMALIZATION_VERSION',1):
             first=self.publish()
-        second=self.publish()
+        with patch('gaia_stats.releases.normalize',wraps=normalize) as normalized:
+            second=self.publish()
         self.assertNotEqual(first['release'],second['release'])
         self.assertEqual(first['datasets'],second['datasets'])
-        with sqlite3.connect(current(self.store)/'base.sqlite') as db:
-            rows=[json.loads(x[0]) for x in db.execute('SELECT payload FROM observations WHERE game_id=?',(payload['slug'],))]
+        normalized.assert_called_once()
+        rows=load_dataset(current(self.store)/'lost-fleet.json')['rows']
         self.assertEqual(len(rows),4)
         self.assertTrue(all(r['normalization_version']==3 and r['vp_ledger_complete'] for r in rows))
-        self.assertEqual(next(r for r in rows if r['faction']=='ivits')['scoring_vp']['final1'],0)
         self.assertEqual(client.exports,[payload['slug']])
         self.assertEqual(self.publish()['release'],second['release'])
 
@@ -146,7 +147,7 @@ class ReleaseTests(unittest.TestCase):
         with sqlite3.connect(self.archive/'archive.sqlite3') as db:self.assertEqual(db.execute('SELECT * FROM scans').fetchall(),before)
 
     def test_interruption_after_pointer_swap_preserves_published_generation(self):
-        self.publish();self.legacy.write_text(self.legacy.read_text()+' ')
+        self.publish();self.add_legacy_game()
         from gaia_stats.__main__ import atomic_json
         def interrupted(path, value):
             atomic_json(path,value)
@@ -171,7 +172,7 @@ class ReleaseTests(unittest.TestCase):
                 entered.set();self.assertTrue(release.wait(3));return b'{}','application/json'
             with patch('gaia_stats.base_cohort.response',side_effect=slow):
                 old=threading.Thread(target=request,args=('/cohort/api/stats',));old.start();self.assertTrue(entered.wait(2))
-                self.legacy.write_text(self.legacy.read_text()+' ');self.publish()
+                self.add_legacy_game();self.publish()
                 def validate_new(path,**kwargs):validating.set();return real_validate(path,**kwargs)
                 with patch('gaia_stats.releases.validate',side_effect=validate_new):
                     identity.return_value='checkout-changed'
@@ -188,7 +189,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(first['release'],second['release'])
         self.assertEqual(len(list((self.store/'releases').iterdir())),1)
         self.assertEqual((self.store/'current.json').read_bytes(),before)
-        self.legacy.write_text(self.legacy.read_text()+' ')
+        self.add_legacy_game()
         with patch('gaia_stats.releases.shutil.disk_usage') as usage:
             usage.return_value.free=0
             with self.assertRaisesRegex(ValueError,'free space'):self.publish()

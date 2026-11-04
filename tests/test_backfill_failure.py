@@ -1,3 +1,4 @@
+from gaia_stats.release_data import load_dataset
 import io
 import importlib.util
 import json
@@ -30,7 +31,7 @@ class BackfillFailureTests(unittest.TestCase):
         path=current(self.store)
         with sqlite3.connect(path/'base.sqlite') as db:
             base=[json.loads(x[0]) for x in db.execute('SELECT payload FROM observations')]
-        lf=json.loads((path/'lost-fleet.json').read_text())['rows']
+        lf=load_dataset(path/'lost-fleet.json')['rows']
         return {(r['ruleset'],r['game_id'],r['faction']):r for r in base+lf}
 
     def test_both_modes_keep_all_prior_rows_seed_and_raw_and_noop_metadata(self):

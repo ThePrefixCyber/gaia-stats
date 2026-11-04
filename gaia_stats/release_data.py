@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import os
+import tempfile
 
 from .__main__ import atomic_json
 
@@ -19,7 +21,10 @@ def object_path(dataset, sha):
         raise ValueError('Invalid LF object hash')
     if dataset.parent.parent.name != 'releases':
         raise ValueError('LF object index must belong to a release store')
-    directory = dataset.parent.parent.parent / 'objects' / 'lost-fleet'
+    root = dataset.parent.parent.parent.resolve()
+    directory = root / 'objects' / 'lost-fleet'
+    if not directory.resolve().is_relative_to(root):
+        raise ValueError('LF object directory escapes its store')
     path = directory / (sha + '.json')
     if path.resolve().parent != directory.resolve():
         raise ValueError('LF object escapes its store')
@@ -44,7 +49,7 @@ def load_dataset(path):
         if hashlib.sha256(raw).hexdigest() != sha:
             raise ValueError('LF object hash mismatch: ' + slug)
         game = json.loads(raw)
-        if not isinstance(game, list) or not game or any(row.get('game_id') != slug for row in game):
+        if not isinstance(game, list) or not game or any(not isinstance(row,dict) or row.get('game_id') != slug for row in game):
             raise ValueError('LF object identity mismatch: ' + slug)
         rows.extend(game)
     return {**data, 'rows': rows}
@@ -63,13 +68,14 @@ def write_dataset(path, groups, **metadata):
             if target.read_bytes() != raw:
                 raise ValueError('Existing LF object is corrupt: ' + slug)
         else:
-            # Publication holds the release-store lock. A partial object after a
-            # crash cannot be selected: verification fails before pointer swap.
-            with target.open('xb') as handle:
+            # Publish each object atomically, too. Interrupted temporary files
+            # are harmless and retained; a retry never sees a partial hash name.
+            with tempfile.NamedTemporaryFile(dir=target.parent, prefix='.pending-', delete=False) as handle:
+                temporary=Path(handle.name)
                 handle.write(raw)
                 handle.flush()
-                import os
                 os.fsync(handle.fileno())
+            os.replace(temporary,target)
         games[slug] = sha
     data = {'schema_version': 1, 'storage': STORAGE, 'games': games, **metadata}
     atomic_json(path, data)

@@ -80,11 +80,12 @@ def verified_export(archive, mode, slug, sha, status):
     return payload
 
 
-def accepted_exports(archive,mode):
+def accepted_exports(archive,mode,*,unchanged=None):
     archive=Path(archive)
     if not (archive/'archive.sqlite3').exists():return
     with sqlite3.connect((archive/'archive.sqlite3').resolve().as_uri()+'?mode=ro',uri=True) as db:
         for slug,sha,status in db.execute('SELECT slug,sha256,status FROM exports WHERE mode=? AND (status IN ("accepted","excluded") OR (status="rejected" AND sha256 IS NOT NULL)) ORDER BY slug',(mode,)):
+            if unchanged and unchanged.get(slug) == [sha, status]:continue
             payload = verified_export(archive,mode,slug,sha,status)
             if payload is None:continue
             # An empty row list is an explicit policy exclusion, not a failed import.
@@ -152,7 +153,7 @@ def base_ids(path,eligible=False):
         return set(db.execute('SELECT game_id,faction FROM observations'+(' WHERE '+BASE_ELIGIBLE_SQL if eligible else '')))
 
 
-def validate(path,previous=None,*,allowed_exclusions=(),known_exclusions=()):
+def validate(path,previous=None,*,allowed_exclusions=(),known_exclusions=(),allow_static_base_migration=False):
     path=Path(path);manifest=json.loads((path/'manifest.json').read_text())
     require_safe_policy(manifest.get('eligibility_policy'))
     for filename in ('base.sqlite','lost-fleet.json'):
@@ -181,6 +182,13 @@ def validate(path,previous=None,*,allowed_exclusions=(),known_exclusions=()):
         allowed=set(allowed_exclusions)
         required_lf={(r['game_id'],r['faction']) for r in eligible_rows(old_lf) if r['game_id'] not in allowed}
         required_base={identity for identity in base_ids(previous/'base.sqlite',eligible=True) if identity[0] not in allowed}
+        if allow_static_base_migration:
+            migration = manifest.get('base_migration', {})
+            if (manifest.get('base_source_policy') != BASE_SOURCE_POLICY or
+                    migration.get('previous_release') != previous.name or
+                    migration.get('previous_base_sha256') != digest(previous/'base.sqlite')):
+                raise ValueError('Invalid static base migration provenance')
+            required_base = set()  # Prior merged data is retained, not served.
         if not required_lf<=lf_ids or not required_base<=base_ids(path/'base.sqlite'):
             raise ValueError('Publication would lose existing player-game records')
     empty = {mode for mode, counts in counts.items() if not counts['records']}
@@ -195,141 +203,188 @@ def validate(path,previous=None,*,allowed_exclusions=(),known_exclusions=()):
     return manifest
 
 
+BASE_SOURCE_POLICY = 'original-csv-only-v1'
+
+
+def archive_sources(archive, mode='lost-fleet'):
+    database = Path(archive)/'archive.sqlite3'
+    if not database.exists():return {}
+    with sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True) as db:
+        return {slug:[sha,status] for slug,sha,status in db.execute(
+            'SELECT slug,sha256,status FROM exports WHERE mode=? AND '
+            '(status IN ("accepted","excluded") OR (status="rejected" AND sha256 IS NOT NULL)) ORDER BY slug', (mode,))}
+
+
+def legacy_source(legacy):
+    if not legacy:return {}, set()
+    data=json.loads(Path(legacy).read_text())
+    require_safe_policy(data.get('eligibility_policy'))
+    excluded=stored_exclusions(data.get('excluded_game_ids', [])) | excluded_ids(data['rows'])
+    groups=defaultdict(list)
+    for row in data['rows']:
+        # Historical base observations come only from the original CSV seed.
+        if row.get('ruleset') == 'base':continue
+        if row.get('ruleset') != 'lost-fleet' or not row.get('score_verified'):
+            raise ValueError('Invalid legacy records')
+        groups[row['game_id']].append(row)
+    return dict(groups), excluded
+
+
 def source_identity(seed_base,archive,legacy):
-    entries=[]; database=Path(archive)/'archive.sqlite3'
-    if database.exists():
-        with sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True) as db:
-            for mode,slug,sha,status in db.execute('SELECT mode,slug,sha256,status FROM exports WHERE status IN ("accepted","excluded") OR (status="rejected" AND sha256 IS NOT NULL) ORDER BY mode,slug'):
-                if status == 'rejected' and not excluded_export(verified_export(archive,mode,slug,sha,status)):
-                    continue
-                entries.append((mode,slug,sha,status))
-    return {'eligibility_policy':POLICY_VERSION,'score_basis_version':SCORE_BASIS_VERSION,'normalization_version':NORMALIZATION_VERSION,'seed':digest(seed_base),'legacy':digest(legacy) if legacy else None,
-            'accepted':hashlib.sha256(json.dumps(entries).encode()).hexdigest()}
+    groups,excluded=legacy_source(legacy)
+    return {'base_source_policy':BASE_SOURCE_POLICY, 'eligibility_policy':POLICY_VERSION,
+            'score_basis_version':SCORE_BASIS_VERSION,'normalization_version':NORMALIZATION_VERSION,
+            'seed':digest(seed_base),
+            'legacy':hashlib.sha256(encoded({'games':groups,'excluded':sorted(excluded)})).hexdigest(),
+            'accepted':hashlib.sha256(encoded(archive_sources(archive))).hexdigest()}
 
 
-def publish(root,seed_base,archive,legacy=None,*,dry_run=False):
-    """Caller holds refresh.lock. No prior releases or legacy files are removed."""
+def seed_evidence(seed):
+    with sqlite3.connect(Path(seed).resolve().as_uri()+'?mode=ro',uri=True) as db:
+        metadata=dict(db.execute('SELECT key,value FROM metadata'))
+        require_safe_policy(metadata.get('eligibility_policy'))
+        if metadata.get('score_basis_version') != SCORE_BASIS_VERSION:
+            raise ValueError('Static base requires a rebuilt original CSV seed with current score provenance')
+        excluded=stored_exclusions(json.loads(metadata.get('excluded_game_ids','[]')))
+        excluded.update(row[0] for row in db.execute('SELECT DISTINCT game_id FROM observations WHERE NOT ('+BASE_ELIGIBLE_SQL+')'))
+        ids={row[0] for row in db.execute('SELECT DISTINCT game_id FROM observations')}
+    return ids, excluded
+
+
+def build_static_base(seed, target, excluded):
+    # Never link the mutable seed or write through a link to an earlier release.
+    shutil.copyfile(seed,target)
+    with sqlite3.connect(target) as db:
+        db.executemany('DELETE FROM observations WHERE game_id=?',((slug,) for slug in excluded))
+        catalog={k:set() for k in ('faction','layout','auction','faction_variant','round_scorings','final_scorings','advanced_technologies')}
+        for (payload,) in db.execute('SELECT payload FROM observations'):
+            row=json.loads(payload)
+            if row.get('score_basis_version') != SCORE_BASIS_VERSION:
+                raise ValueError('Static seed contains unmigrated observation')
+            for k in ('faction','layout','auction','faction_variant'):catalog[k].add(str(row[k]))
+            for k in ('round_scorings','final_scorings'):catalog[k].update(row[k])
+            catalog['advanced_technologies'].update(v for k,v in row['technologies'].items() if k.startswith('adv-'))
+        db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('catalog',json.dumps({k:sorted(v) for k,v in catalog.items()})))
+        db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('base_source_policy',BASE_SOURCE_POLICY))
+        db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('excluded_game_ids',json.dumps(sorted(excluded))))
+        return db.execute('SELECT COUNT(DISTINCT game_id),COUNT(*) FROM observations').fetchone()
+
+
+def publish(root,seed_base,archive,legacy=None,*,dry_run=False,allow_static_base_migration=False):
+    """Caller holds refresh.lock. Retain every raw, input and prior release file.
+
+    Migration opt-in changes the served base source, not the preserved archive.
+    LF remains monotonic except explicit whole-game eligibility exclusions.
+    """
     root=Path(root);previous=current(root)
     prior=validate(previous) if previous else None
-    known = known_exclusions(root)
+    migrating=bool(prior and prior.get('base_source_policy') != BASE_SOURCE_POLICY)
+    if migrating and not allow_static_base_migration:
+        raise ValueError('Merged base release requires explicit static CSV migration into a reviewed bundle')
+    known=known_exclusions(root)
     inputs=source_identity(seed_base,archive,legacy)
-    if prior and prior.get("inputs")==inputs and known <= stored_exclusions(prior.get('excluded_game_ids', [])):return prior
-    source=previous/"base.sqlite" if previous else Path(seed_base)
-    if shutil.disk_usage(root).free < max(512*1024*1024,source.stat().st_size*2):
-        raise ValueError("Insufficient free space for a safe release; retain current data and review old generated releases")
+    if prior and prior.get('inputs')==inputs and known <= stored_exclusions(prior.get('excluded_game_ids', [])):
+        return prior
+    checkpoint_path=root/'source-checkpoint.json'
+    checkpoint=json.loads(checkpoint_path.read_text()) if checkpoint_path.exists() else {}
+    if (prior and checkpoint.get('release')==prior['release'] and checkpoint.get('inputs')==inputs and
+            known <= stored_exclusions(prior.get('excluded_game_ids',[]))):
+        return prior
+    legacy_groups,legacy_exclusions=legacy_source(legacy)
+    excluded=known | legacy_exclusions | stored_exclusions(prior.get('excluded_game_ids',[]) if prior else [])
+    seed_ids,seed_exclusions=seed_evidence(seed_base)
+    excluded.update(seed_exclusions)
+    # One-time migration retains verified base exclusion evidence, but imports no
+    # base raw observations and never makes base raw part of ongoing identity.
+    if migrating or not prior:
+        for slug,(sha,status) in archive_sources(archive,'base').items():
+            if excluded_export(verified_export(archive,'base',slug,sha,status)):
+                excluded.add(slug)
+    lf={}
+    if previous:
+        for row in load_dataset(previous/'lost-fleet.json')['rows']:
+            lf.setdefault(row['game_id'],[]).append(row)
+    for slug,rows in legacy_groups.items():
+        if slug not in lf:lf[slug]=rows
+    for rows in lf.values():excluded.update(excluded_ids(rows))
+    versions=('normalization_version','eligibility_policy','score_basis_version')
+    compatible=bool(prior and all(prior.get('inputs',{}).get(k)==inputs[k] for k in versions))
+    unchanged=prior.get('lf_sources',{}) if compatible else {}
+    if compatible and checkpoint.get('release')==prior['release']:
+        unchanged=checkpoint.get('lf_sources',unchanged)
+    sources=archive_sources(archive)
+    for slug,rows in accepted_exports(archive,'lost-fleet',unchanged=unchanged):
+        if not rows:excluded.add(slug)
+        else:lf[slug]=rows
+    empty_after_exclusion=[mode for mode,ids in (('base',seed_ids),('lost-fleet',set(lf)))
+                           if (ids and ids<=excluded) or
+                           (not ids and prior and mode in prior.get('empty_after_exclusion',[]))]
+    for slug in excluded:lf.pop(slug,None)
+    lf={slug:analysis_rows(rows) for slug,rows in lf.items()}
+    base_inputs={'seed':inputs['seed'],'eligibility_policy':POLICY_VERSION,
+                 'score_basis_version':SCORE_BASIS_VERSION,'excluded_game_ids':sorted(excluded & seed_ids)}
+    reuse=bool(prior and prior.get('base_source_policy')==BASE_SOURCE_POLICY and prior.get('base_inputs')==base_inputs)
+    if reuse and compatible and excluded==stored_exclusions(prior.get('excluded_game_ids',[])):
+        old_groups={}
+        for row in load_dataset(previous/'lost-fleet.json')['rows']:
+            old_groups.setdefault(row['game_id'],[]).append(row)
+        signatures=lambda groups:{slug:hashlib.sha256(encoded(sorted(rows,key=lambda r:r['faction']))).hexdigest() for slug,rows in groups.items()}
+        if signatures(lf)==signatures(old_groups):
+            # Source bookkeeping may change without changing a single served
+            # observation. Keep the generation/pointer/cache and record a small
+            # checkpoint so the same inputs do not need processing next time.
+            if not dry_run:atomic_json(checkpoint_path,{'release':prior['release'],'inputs':inputs,'lf_sources':sources})
+            return prior
+    # Growth is one base snapshot only when its actual source changes, plus new
+    # LF objects and tiny indexes. Reserve ample bounded headroom, not 2x base on
+    # every LF refresh. Existing artifacts are never pruned here.
+    estimate=(0 if reuse else Path(seed_base).stat().st_size)+sum(len(encoded(rows)) for rows in lf.values())+1024**2
+    if shutil.disk_usage(root).free < max(64*1024**2,estimate+16*1024**2):
+        raise ValueError('Insufficient free space for a safe release; retain current data')
     (root/'releases').mkdir(parents=True,exist_ok=True)
     stage=Path(tempfile.mkdtemp(prefix='release-',dir=root/'releases'))
     try:
-        shutil.copyfile(previous/'base.sqlite' if previous else seed_base,stage/'base.sqlite')
-        lf={}
-        if previous:
-            for row in load_dataset(previous/'lost-fleet.json')['rows']:lf.setdefault(row['game_id'],[]).append(row)
-        legacy_groups=defaultdict(list)
-        legacy_exclusions = set()
-        if legacy:
-            legacy_data = json.loads(Path(legacy).read_text())
-            require_safe_policy(legacy_data.get('eligibility_policy'))
-            legacy_exclusions.update(stored_exclusions(legacy_data.get('excluded_game_ids', [])))
-            legacy_exclusions.update(excluded_ids(legacy_data['rows']))
-            for row in legacy_data['rows']:
-                if row['game_id'] in legacy_exclusions:continue
-                if row.get('ruleset') not in ('base','lost-fleet') or not row.get('score_verified'):raise ValueError('Invalid legacy records')
-                legacy_groups[(row['ruleset'],row['game_id'])].append(row)
-        raw_counts={}
-        excluded=known | legacy_exclusions | stored_exclusions(prior.get('excluded_game_ids', []) if prior else [])
-        # Current seed evidence can change even when the staged data preserves the
-        # previous release, so read the actual source separately and read-only.
-        with sqlite3.connect(Path(seed_base).resolve().as_uri()+'?mode=ro',uri=True) as seed_db:
-            seed_policy = seed_db.execute("SELECT value FROM metadata WHERE key='eligibility_policy'").fetchone()
-            require_safe_policy(seed_policy[0] if seed_policy else None)
-            seed_exclusions = seed_db.execute("SELECT value FROM metadata WHERE key='excluded_game_ids'").fetchone()
-            if seed_exclusions:excluded.update(stored_exclusions(json.loads(seed_exclusions[0])))
-            excluded.update(row[0] for row in seed_db.execute('SELECT DISTINCT game_id FROM observations WHERE NOT ('+BASE_ELIGIBLE_SQL+')'))
-        with sqlite3.connect(stage/'base.sqlite') as db:
-            excluded.update(row[0] for row in db.execute('SELECT DISTINCT game_id FROM observations WHERE NOT ('+BASE_ELIGIBLE_SQL+')'))
-            for rows in lf.values():excluded.update(excluded_ids(rows))
-            for rows in legacy_groups.values():excluded.update(excluded_ids(rows))
-            overlay_refreshed_seed(db, seed_base, excluded)
-            for (mode,slug),rows in legacy_groups.items():
-                if slug in excluded:continue
-                if mode=='base':insert_game(db,slug,rows)
-                elif slug not in lf:lf[slug]=rows
-            for mode in ('base','lost-fleet'):
-                raw_counts[mode]=0
-                for slug,rows in accepted_exports(archive,mode):
-                    if not rows:
-                        excluded.add(slug)
-                        continue
-                    raw_counts[mode]+=1
-                    if mode=='base':insert_game(db,slug,rows,replace=True)
-                    else:lf[slug]=rows
-            # This only edits the new release copy. Seed, archive, legacy inputs
-            # and every prior release remain available for recovery.
-            prior_base_ids = {r[0] for r in db.execute('SELECT DISTINCT game_id FROM observations')}
-            empty_after_exclusion = [mode for mode, ids in (('base', prior_base_ids), ('lost-fleet', set(lf)))
-                                     if (ids and ids <= excluded) or
-                                     (not ids and prior and mode in prior.get('empty_after_exclusion', []))]
-            db.executemany('DELETE FROM observations WHERE game_id=?',((slug,) for slug in excluded))
-            for slug in excluded:lf.pop(slug,None)
-            # Restore scores/ranks of preserved raw snapshots even when their
-            # archive is unavailable. Historical rows still need a rebuilt seed;
-            # unknown provenance is retained and fails the activation preflight.
-            pending = []
-            def normalize_group(group):
-                for row in analysis_rows(group):
-                    db.execute('UPDATE observations SET payload=? WHERE game_id=? AND faction=?',
-                               (json.dumps(row,separators=(',',':')),row['game_id'],row['faction']))
-            for (payload,) in db.execute('SELECT payload FROM observations ORDER BY game_id,faction'):
-                row=json.loads(payload)
-                if pending and pending[0]['game_id'] != row['game_id']:
-                    normalize_group(pending);pending=[]
-                pending.append(row)
-            if pending:normalize_group(pending)
-            db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('score_basis_version',SCORE_BASIS_VERSION))
-            db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('eligibility_policy',str(POLICY_VERSION)))
-            # Rebuild catalogue from this exact merged release, not stale historical options.
-            catalog={k:set() for k in ('faction','layout','auction','faction_variant','round_scorings','final_scorings','advanced_technologies')}
-            for (payload,) in db.execute('SELECT payload FROM observations'):
-                row=json.loads(payload)
-                for k in ('faction','layout','auction','faction_variant'):catalog[k].add(str(row[k]))
-                for k in ('round_scorings','final_scorings'):catalog[k].update(row[k])
-                catalog['advanced_technologies'].update(v for k,v in row['technologies'].items() if k.startswith('adv-'))
-            db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('catalog',json.dumps({k:sorted(v) for k,v in catalog.items()})))
-            bg,br=db.execute('SELECT COUNT(DISTINCT game_id),COUNT(*) FROM observations').fetchone()
-        rows=[row for slug in sorted(lf) for row in analysis_rows(lf[slug])]
-        atomic_json(stage/'lost-fleet.json',{'schema_version':1,'rows':rows,'scope':'Public LF archive plus preserved prior records; see health for refresh coverage and freshness'})
-        manifest={'inputs':inputs,'schema_version':1,'score_basis_version':SCORE_BASIS_VERSION,'eligibility_policy':POLICY_VERSION,'excluded_games':len(excluded),
-                  'excluded_game_ids':sorted(excluded),'empty_after_exclusion':empty_after_exclusion,
-                  'created_at':utc(),'release':stage.name,'previous':previous.name if previous else None,
-                  'datasets':{'base':{'games':bg,'records':br},'lost-fleet':{'games':len(lf),'records':len(rows)}},
-                  'raw_accepted_games':raw_counts,'coverage':'Historical base CSV seed plus accepted raw exports; raw backfill may be incomplete. Overlapping game IDs are replaced, never added twice.',
+        if reuse:
+            # Same-filesystem link is mandatory: never silently resume full-copy
+            # growth on a misconfigured filesystem. Prior releases are read-only.
+            os.link(previous/'base.sqlite',stage/'base.sqlite')
+            bg,br=(prior['datasets']['base'][k] for k in ('games','records'))
+        else:
+            bg,br=build_static_base(seed_base,stage/'base.sqlite',excluded & seed_ids)
+        write_dataset(stage/'lost-fleet.json',lf,eligibility_policy=POLICY_VERSION,
+                      scope='Incremental public LF archive plus preserved prior records; see health for coverage and freshness')
+        manifest={'inputs':inputs,'base_source_policy':BASE_SOURCE_POLICY,'base_inputs':base_inputs,
+                  'lf_sources':sources,'schema_version':1,'score_basis_version':SCORE_BASIS_VERSION,
+                  'eligibility_policy':POLICY_VERSION,'excluded_games':len(excluded),'excluded_game_ids':sorted(excluded),
+                  'empty_after_exclusion':empty_after_exclusion,'created_at':utc(),'release':stage.name,
+                  'previous':previous.name if previous else None,
+                  'datasets':{'base':{'games':bg,'records':br},'lost-fleet':{'games':len(lf),'records':sum(map(len,lf.values()))}},
+                  'raw_accepted_games':{'base':0,'lost-fleet':sum(status=='accepted' and slug in lf for slug,(sha,status) in sources.items())},
+                  'coverage':'Static original base CSV only; no base collection or raw overlays. Lost Fleet updates incrementally; archived inputs and prior releases are retained.',
                   'sha256':{name:digest(stage/name) for name in ('base.sqlite','lost-fleet.json')}}
+        if migrating:
+            old_ids=base_ids(previous/'base.sqlite');new_ids=base_ids(stage/'base.sqlite')
+            manifest['base_migration']={'previous_release':previous.name,'previous_base_sha256':prior['sha256']['base.sqlite'],
+                                       'previous_counts':prior['datasets']['base'],'seed_sha256':inputs['seed'],
+                                       'archived_only_games':len({g for g,f in old_ids-new_ids}),
+                                       'archived_only_records':len(old_ids-new_ids)}
         atomic_json(stage/'manifest.json',manifest)
-        validate(stage,previous,allowed_exclusions=excluded)
-        # Preserve all legacy identities even when the very first release has no predecessor.
-        for (mode,slug),old in legacy_groups.items():
-            if slug in excluded:continue
-            ids={(r['game_id'],r['faction']) for r in old}
-            available=base_ids(stage/'base.sqlite') if mode=='base' else {(r['game_id'],r['faction']) for r in rows}
-            if not ids<=available:raise ValueError('Legacy record preservation failed')
+        validate(stage,previous,allowed_exclusions=excluded,allow_static_base_migration=migrating)
+        for slug,old in legacy_groups.items():
+            if slug not in excluded and not {r['faction'] for r in old}<={r['faction'] for r in lf.get(slug,[])}:
+                raise ValueError('Legacy LF record preservation failed')
         if not dry_run:
-            # Persist evidence first: an interrupted swap may make the old release
-            # temporarily unavailable, but cannot expose newly excluded games.
             atomic_json(root/'exclusions.json',{'eligibility_policy':POLICY_VERSION,'game_ids':sorted(excluded)})
             atomic_json(root/'current.json',{'release':stage.name})
         return manifest
     except BaseException:
-        # The atomic swap may have completed immediately before an interruption.
-        # If its outcome cannot be read, retain the candidate rather than risk a
-        # dangling live pointer. Unreferenced candidates can be inspected later.
-        try: published = current(root) == stage
-        except BaseException: published = True
-        if not published:shutil.rmtree(stage)
+        # Keep even incomplete candidates for inspection. Never remove existing
+        # data or risk undoing an atomic pointer swap after an interruption.
         raise
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--root',required=True);parser.add_argument('--seed-base',required=True);parser.add_argument('--archive',required=True);parser.add_argument('--legacy');parser.add_argument('--dry-run',action='store_true');parser.add_argument('--rollback')
+    parser=argparse.ArgumentParser();parser.add_argument('--root',required=True);parser.add_argument('--seed-base',required=True);parser.add_argument('--archive',required=True);parser.add_argument('--legacy');parser.add_argument('--dry-run',action='store_true');parser.add_argument('--rollback');parser.add_argument('--allow-static-base-migration',action='store_true')
     args=parser.parse_args()
     with release_lock(args.root):
         if args.rollback:
@@ -337,6 +392,6 @@ def main():
             path=Path(args.root)/'releases'/args.rollback;validate(path,known_exclusions=known_exclusions(args.root))
             if not args.dry_run:atomic_json(Path(args.root)/'current.json',{'release':args.rollback})
             print(json.dumps({'rollback':args.rollback,'dry_run':args.dry_run}))
-        else:print(json.dumps(publish(args.root,args.seed_base,args.archive,args.legacy,dry_run=args.dry_run),indent=2))
+        else:print(json.dumps(publish(args.root,args.seed_base,args.archive,args.legacy,dry_run=args.dry_run,allow_static_base_migration=args.allow_static_base_migration),indent=2))
 
 if __name__=='__main__':main()

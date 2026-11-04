@@ -18,6 +18,7 @@ from .archive import archive_lock
 from .releases import current, validate, known_exclusions, publish, release_lock, digest, utc, source_identity
 from .score_basis import SCORE_BASIS_VERSION
 from .eligibility import POLICY_VERSION
+from .release_data import load_dataset
 
 
 def prepare(destination, source_root, csvs, archive, legacy=None):
@@ -64,10 +65,15 @@ def prepare(destination, source_root, csvs, archive, legacy=None):
             baseline=store/'releases'/original.name
             baseline.parent.mkdir(parents=True)
             shutil.copytree(original,baseline)
+            # Copy the small LF object set when staging an already incremental
+            # release. Never make the new bundle depend on old-store paths.
+            if (source_root/'objects/lost-fleet').exists():
+                shutil.copytree(source_root/'objects/lost-fleet',store/'objects/lost-fleet')
             atomic_json(store/'current.json',{'release':original.name})
             if registry.exists():shutil.copyfile(registry,store/'exclusions.json')
+            expected_inputs=source_identity(seed,archive,legacy)
             with release_lock(store):
-                manifest=publish(store,seed,archive,legacy)
+                manifest=publish(store,seed,archive,legacy,allow_static_base_migration=True)
             build_cache(destination/'classic-cache',csvs,excluded_game_ids=known_exclusions(store))
             code=Path(__file__).resolve().parents[1]
             check=subprocess.run([sys.executable,str(code/'deploy/check-data-contract.py'),
@@ -79,7 +85,7 @@ def prepare(destination, source_root, csvs, archive, legacy=None):
                 raise ValueError('Staged data-contract preflight failed: '+(check.stderr or check.stdout).strip())
             if any(digest(csvs[int(count)]) != info['sha256'] for count,info in record['csvs'].items()):
                 raise ValueError('Original CSV changed during staging; do not activate this bundle')
-            if manifest['inputs'] != source_identity(seed,archive,legacy):
+            if expected_inputs != source_identity(seed,archive,legacy):
                 raise ValueError('Archive or legacy inputs changed during staging; do not activate this bundle')
             if (digest(registry) if registry.exists() else None) != registry_hash:
                 raise ValueError('Source exclusion registry changed during staging; do not activate this bundle')
