@@ -73,7 +73,9 @@ class ComparisonTests(unittest.TestCase):
             csvs={}
             for p in (2,3,4):
                 csvs[p]=root/f'{p}.csv'
-                csvs[p].write_text('Unnamed: 0,num_players,'+','.join(f'pos_{i}_faction' for i in range(1,p+1))+'\n0,'+str(p)+','+','.join(['terrans']*p)+'\n')
+                fields=[f'pos_{i}_{key}' for i in range(1,p+1) for key in ('faction','dropped','score','bid')]
+                values=[value for i in range(1,p+1) for value in ('terrans','False','150','0')]
+                csvs[p].write_text('Unnamed: 0,num_players,'+','.join(fields)+'\n0,'+str(p)+','+','.join(values)+'\n')
             with patch('gaia_stats.corrected_plots.observations',return_value=[]), patch('gaia_stats.legacy_plots.make_plot',return_value=go.Figure()), patch('gaia_stats.legacy_cache.FACTIONS',('terrans',)):
                 manifest=build_cache(root/'cache',csvs,source)
             self.assertNotIn('comparisons', manifest)

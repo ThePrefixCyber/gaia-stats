@@ -412,9 +412,11 @@ class ClassicEligibilityTests(unittest.TestCase):
                 path = root/f'{players}.csv'; csvs[players] = path
                 with path.open('w') as handle:
                     writer = csv.writer(handle)
-                    writer.writerow(['id', 'num_players', 'balance_variant'] + [f'pos_{p}_faction' for p in range(1, players+1)])
-                    writer.writerow(['same', players, 'more-balanced' if players == 2 else ''] + ['terrans']*players)
-                    writer.writerow([f'keep{players}', players, ''] + ['terrans']*players)
+                    fields=[f'pos_{p}_{key}' for p in range(1, players+1) for key in ('dropped','score','bid')]
+                    values=[value for p in range(1, players+1) for value in (False,150,0)]
+                    writer.writerow(['id', 'num_players', 'balance_variant'] + [f'pos_{p}_faction' for p in range(1, players+1)]+fields)
+                    writer.writerow(['same', players, 'more-balanced' if players == 2 else ''] + ['terrans']*players+values)
+                    writer.writerow([f'keep{players}', players, ''] + ['terrans']*players+values)
             before = {p: p.read_bytes() for p in csvs.values()}
             def build(excluded=()):
                 with patch('gaia_stats.corrected_plots.observations', return_value=[]), \
