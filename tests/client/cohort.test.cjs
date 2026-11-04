@@ -16,6 +16,7 @@ for name in ('Modern-riddle-1723.json','Jubilant-rover-3041.json'):
     rows.extend(enrich(game,normalize(game)))
 dataset={'rows':rows,'scope':'Client test fixtures'}
 print(json.dumps({mode:{'catalog':json.loads(response(dataset,'/cohort/api/catalog',{'ruleset':mode})[0]),
+    'faction_scoring':report(dataset,{'ruleset':mode,'faction':'firaks'}),
     'stats':{cutoff:report(dataset,dict(ruleset=mode,**({'min_elo':cutoff} if cutoff else {}))) for cutoff in ('','200','99999')}}
     for mode in ('base','lost-fleet')}))
 `], {encoding:'utf8'}));
@@ -39,7 +40,7 @@ async function harness({plotly=true, controlled=false, controlledCatalog=false, 
     const mode=q.ruleset||'lost-fleet', fixture=fixtures[mode];
     const isStats=u.pathname.endsWith('/stats');
     if(isStats)requests.push(q);
-    let data=isStats?structuredClone(fixture.stats[q.min_elo||'']):fixture.catalog;
+    let data=isStats?structuredClone(q.plot==='final-scoring'&&q.faction==='firaks'?fixture.faction_scoring:fixture.stats[q.min_elo||'']):fixture.catalog;
     if(isStats){data.filters=q;data.plots={[q.plot]:data.plots[q.plot]};}
     const entry={q,signal,isStats,resolve:null};
     return new Promise((resolve,reject)=>{
@@ -576,4 +577,22 @@ test('mode error and restored invalid Elo purge retained Plotly state before rep
    h.setFailures(false);h.get('filters').elements.min_elo.value='';await h.apply();assert.ok(h.get('chart').data);assert.equal(h.get('chart-loading').hidden,true);
   }finally{h.close();}
  }
+});
+
+
+test('front page omits source-slot scoring summaries but retains both detailed scoring charts',async()=>{
+ const h=await harness();
+ try{
+  for(const id of ['round-comparison','final-comparison'])assert.equal(h.get(id),null);
+  assert.doesNotMatch(h.w.document.body.textContent,/Round scoring VP|Final scoring VP|four comparison tables/);
+  for(const kind of ['round-scoring','final-scoring']){
+   h.get('filters').elements.faction.value='firaks';await h.select('plot',kind);
+   if(kind==='round-scoring')await h.select('scoring-view','absolute');
+   assert.equal(h.w.testClient.getResult().filters.faction,'firaks');
+   assert.ok(h.get('chart').data?.some(trace=>trace.type==='heatmap'),kind);
+   assert.ok(h.get('metrics').querySelector('table'),kind);
+   for(const id of ['comparison','tech-comparison'])assert.ok(h.get(id).querySelector('table'),kind);
+   assert.match(h.get('csv').href,new RegExp('plot='+kind));
+  }
+ }finally{h.close();}
 });

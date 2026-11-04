@@ -32,10 +32,10 @@ explicit BGS option metadata, not faction names. The default excludes that
 variant; it does not remove ordinary three- and four-player LF games.
 
 All nine chart views and the selected player-game CSV honor the faction filter.
-The four always-visible faction, round/final VP and advanced-tech comparison
-tables include all factions, retaining every other selected filter and scoring
-setup. Selecting a faction with no graph observations can still leave valid
-comparison rows for other factions. Chart views include:
+The two always-visible faction and advanced-tech comparison tables include all
+factions, retaining every other selected filter and scoring setup. Selecting a
+faction with no graph observations can still leave valid comparison rows for
+other factions. Chart views include:
 
 - Three basic-technology views: acquisition by setup location, acquirers’ mean score by source location, and all setup observations’ mean score. Advanced technology frequency and mean-score plots remain available. See [basic-tech methods](docs/BASIC_TECH_MODES.md).
 - Round-one structure treemap.

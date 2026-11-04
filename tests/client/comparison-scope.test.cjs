@@ -36,7 +36,9 @@ test('faction changes only the graph cohort, keeping sorted all-faction comparis
     w.eval(readFileSync('web/cohort/tables.js','utf8'));
     w.eval(readFileSync('web/cohort/app.js','utf8')+'\nwindow.currentResult=()=>result;');
     await tick();await tick();
-    const targets=['comparison','round-comparison','final-comparison','tech-comparison'];
+    const targets=['comparison','tech-comparison'];
+    assert.equal(get('round-comparison'),null);assert.equal(get('final-comparison'),null);
+    assert.doesNotMatch(w.document.body.textContent,/Round scoring VP|Final scoring VP|four comparison tables/);
     for(const id of targets)assert.equal(factions(id).length,4);
     const table=get('comparison').firstChild;
     get('comparison').querySelector('button').click();

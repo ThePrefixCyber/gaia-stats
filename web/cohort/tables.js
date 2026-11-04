@@ -26,7 +26,6 @@
   };
   const titles = {
     metrics: 'Exact chart observations', comparison: 'Faction results',
-    'round-comparison': 'Round scoring VP', 'final-comparison': 'Final scoring VP',
     'tech-comparison': 'Advanced technology results'
   };
   const isMissing = value => value == null || (typeof value === 'number' && !Number.isFinite(value));

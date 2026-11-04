@@ -188,9 +188,10 @@ function renderResult(data,q){
  el('scope').hidden=el('mode').value==='lost-fleet';el('scope').textContent=el('mode').value==='base'?data.scope+'. Auction metadata is unavailable in these CSVs. All dynamic views use net scores, without historical score/quantile cutoffs.':'';
  el('csv').href='/cohort/api/export?'+q;
  // Chart changes do not require rebuilding identical comparison tables.
- const signature=JSON.stringify([data.comparisons,data.setup_comparisons]);
+ const signature=JSON.stringify([data.comparisons,data.setup_comparisons.technologies]);
  if(signature!==comparisonSignature){
- table(el('comparison'),data.comparisons,['faction','samples','games','mean_score','mean_rank','win_share']);for(const [kind,target,keys] of [['rounds','round-comparison',[1,2,3,4,5,6].map(i=>'round'+i)],['finals','final-comparison',['final1','final2']],['technologies','tech-comparison',['adv-terra','adv-nav','adv-int','adv-gaia','adv-eco','adv-sci','adv-ext']]]){table(el(target),data.setup_comparisons[kind],['faction','samples',...keys]);}
+ table(el('comparison'),data.comparisons,['faction','samples','games','mean_score','mean_rank','win_share']);
+ table(el('tech-comparison'),data.setup_comparisons.technologies,['faction','samples','adv-terra','adv-nav','adv-int','adv-gaia','adv-eco','adv-sci','adv-ext']);
  comparisonSignature=signature;
  }
  return draw();
@@ -221,7 +222,7 @@ async function update({refresh=false}={}){
  }catch(error){
   if(current!==generation||error.name==='AbortError')return;
   result=null;comparisonSignature=null;el('status').textContent=error.message;
-  for(const id of ['comparison','round-comparison','final-comparison','tech-comparison','metrics'])el(id).replaceChildren();
+  for(const id of ['comparison','tech-comparison','metrics'])el(id).replaceChildren();
   if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent='Unavailable';el('csv').removeAttribute('href');
  }finally{
   if(current===generation){requestController=null;pendingKey=null;setChartLoading(false,el('status').textContent);}
@@ -237,7 +238,7 @@ async function loadMode(){
  form.querySelector('fieldset').disabled=true;form.elements.faction.disabled=true;el('plot').disabled=true;setChartLoading(true,'Loading game mode…');
  requestController=new AbortController();const signal=requestController.signal;
  const mode=el('mode').value,current=++generation;history.replaceState(null,'','?ruleset='+mode);result=null;el('status').textContent='';el('csv').removeAttribute('href');
- for(const id of ['comparison','round-comparison','final-comparison','tech-comparison','metrics'])el(id).replaceChildren();
+ for(const id of ['comparison','tech-comparison','metrics'])el(id).replaceChildren();
  if(!el('chart').hasChildNodes())el('chart').textContent='Loading…';
  try{
   const response=await fetch('/cohort/api/catalog?ruleset='+mode,{signal});const catalog=await response.json();if(!response.ok)throw Error(catalog.error||'Catalog unavailable');if(current!==generation)return;
