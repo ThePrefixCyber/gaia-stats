@@ -2,7 +2,7 @@
 from collections import Counter
 import re
 
-NORMALIZATION_VERSION = 2
+NORMALIZATION_VERSION = 3
 RESEARCH_TRACKS = ('terra', 'nav', 'int', 'gaia', 'eco', 'sci')
 TILE_SOURCES = tuple(f'round{i}' for i in range(1, 7)) + ('final1', 'final2')
 BASE_SOURCES = ('init', 'bid', 'charge', 'booster', *TILE_SOURCES, 'fed',

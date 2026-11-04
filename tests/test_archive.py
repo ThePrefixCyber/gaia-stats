@@ -16,7 +16,7 @@ FIXTURES = Path(__file__).parent / 'fixtures'
 
 
 def game(slug, lf=True):
-    path = FIXTURES / ('Jubilant-rover-3041.json' if lf else 'Modern-riddle-1723.json')
+    path = FIXTURES / ('Jubilant-rover-3041.json' if lf else 'cohort/Shiny-cypress-1384.json')
     payload = json.loads(path.read_text())
     payload['slug'] = slug
     return payload

@@ -65,15 +65,15 @@ function treemapScoreStyle(values){
  // grey 100. Plotly permits color strings alongside numeric marker values.
  const marker={colors:values.map(value=>Number.isFinite(value)?value:'#ffffff'),
   autocolorscale:false,reversescale:false,cauto:false,cmin:low,cmax:high,
-  showscale:observed.length>0,colorbar:{title:'Mean net VP',tickmode:'array',tickformat:'.4~g'}};
+  showscale:observed.length>0,colorbar:{title:'Mean pre-bid VP',tickmode:'array',tickformat:'.4~g'}};
  // Every observed score is a stop, so nonlinear tail colors remain identical
  // across selections as well. Interpolate continuously between distinct stops.
  const stops=[...new Set([low,0,50,100,150,200,225,300,high,...observed])].sort((a,b)=>a-b);
  marker.colorscale=stops.map(score=>[(score-low)/(high-low),treemapScoreColor(score)]);
  marker.colorbar.tickvals=[...(low<0?[low]:[]),0,100,200,300,...(high>300?[high]:[])];
  const note=observed.length
-  ? 'Fixed score colors: 0 VP = bright red; 100 VP = grey; 200 VP = dark blue. Above 200, blue blends into green; higher values become lighter green.'+(low<0?' Negative scores use darker reds.':'')+(observed.length<values.length?' White tiles have unavailable mean net VP.':'')
-  : 'Mean net VP is unavailable; white tiles have no score color scale.';
+  ? 'Fixed score colors: 0 VP = bright red; 100 VP = grey; 200 VP = dark blue. Above 200, blue blends into green; higher values become lighter green.'+(low<0?' Negative scores use darker reds.':'')+(observed.length<values.length?' White tiles have unavailable mean pre-bid VP.':'')
+  : 'Mean pre-bid VP is unavailable; white tiles have no score color scale.';
  return {marker,note};
 }
 // Match Tim's root → highest structure class → exact six-count configuration.
@@ -123,8 +123,8 @@ if(kind.startsWith('basic-tech-')){({traces,layout}=GaiaBasicTech.build(kind,cel
 else if(kind==='point-sources'){
  if(relative){
   const groups=[...new Set(cells.map(c=>`${c.player_count}p · rank ${c.rank}`))];
-  traces=groups.map(group=>{const part=cells.filter(c=>`${c.player_count}p · rank ${c.rank}`===group&&c.samples);return {type:'box',name:group,x:part.map(c=>c.label),q1:part.map(c=>c.q1),median:part.map(c=>c.median),q3:part.map(c=>c.q3),lowerfence:part.map(c=>c.lower),upperfence:part.map(c=>c.upper),hovertext:part.map(c=>`${GaiaTiles.metric(kind,c.label)}<br>n=${c.samples}; signed % of final net score`),hovertemplate:'%{hovertext}<br>%{y}<extra>%{fullData.name}</extra>'};});
-  layout.boxmode='group';layout.yaxis.title='Signed share of final net score (%)';
+  traces=groups.map(group=>{const part=cells.filter(c=>`${c.player_count}p · rank ${c.rank}`===group&&c.samples);return {type:'box',name:group,x:part.map(c=>c.label),q1:part.map(c=>c.q1),median:part.map(c=>c.median),q3:part.map(c=>c.q3),lowerfence:part.map(c=>c.lower),upperfence:part.map(c=>c.upper),hovertext:part.map(c=>`${GaiaTiles.metric(kind,c.label)}<br>n=${c.samples}; signed % of pre-bid score`),hovertemplate:'%{hovertext}<br>%{y}<extra>%{fullData.name}</extra>'};});
+  layout.boxmode='group';layout.yaxis.title='Signed share of pre-bid score (%)';
  }else{traces=cells.map(c=>({type:'box',name:GaiaTiles.metric(kind,c.label),x:[c.label],q1:[c.q1],median:[c.median],q3:[c.q3],lowerfence:[c.lower],upperfence:[c.upper],hovertext:GaiaTiles.metric(kind,c.label)+'<br>n='+c.samples,hovertemplate:'%{hovertext}<br>%{y}<extra></extra>'}));layout.yaxis.title='VP contribution (signed)';}
  // A display label is never a category key: different sources can share shorthand.
  const sources=[...new Set(cells.map(c=>c.label))];
@@ -168,12 +168,12 @@ else if(kind==='round-one-structures'){
  el('note').textContent+=' '+scoreStyle.note+' Nested as overall → structure class → exact counts (mines, TS, lab, PI, academy 1, academy 2). Click a branch to inspect it. Parent scores are sample-weighted.';
  traces=[{type:'treemap',ids:nodes.map(c=>c.id),labels:nodes.map(c=>c.label),parents:nodes.map(c=>c.parent),
   values:nodes.map(c=>c.samples),branchvalues:'total',marker:scoreStyle.marker,
-  hovertext:nodes.map(c=>`Player observations=${c.samples}; mean net VP=${c.mean_score==null?'Unavailable':c.mean_score.toFixed(2)}<br>Mean pregame Elo=${c.mean_elo==null?'Unavailable':c.mean_elo.toFixed(2)} (rated n=${c.mean_elo_n})`),
+  hovertext:nodes.map(c=>`Player observations=${c.samples}; mean pre-bid VP=${c.mean_score==null?'Unavailable':c.mean_score.toFixed(2)}<br>Mean pregame Elo=${c.mean_elo==null?'Unavailable':c.mean_elo.toFixed(2)} (rated n=${c.mean_elo_n})`),
   hovertemplate:'%{label}<br>%{hovertext}<extra></extra>'}];
  layout.margin={t:50,l:25,r:25,b:25};
 }
 
-else {traces=[{type:'scatter',mode:'markers',name:'Mean net VP',y:cells.map(c=>c.label),customdata:cells.map(c=>GaiaTiles.metric(kind,c.label)),x:cells.map(c=>c.mean_score),hovertext:cells.map(c=>`n=${c.samples}; mean rank=${c.mean_rank??'unavailable'}`),hovertemplate:'%{customdata}<br>%{x} VP<br>%{hovertext}<extra></extra>'}];layout.xaxis.title=p.value_label;layout.yaxis={title:'Tech / Location',tickmode:'array',tickvals:cells.map(c=>c.label),ticktext:cells.map(c=>GaiaTiles.metric(kind,c.label)),automargin:true};}
+else {traces=[{type:'scatter',mode:'markers',name:'Mean pre-bid VP',y:cells.map(c=>c.label),customdata:cells.map(c=>GaiaTiles.metric(kind,c.label)),x:cells.map(c=>c.mean_score),hovertext:cells.map(c=>`n=${c.samples}; mean rank=${c.mean_rank??'unavailable'}`),hovertemplate:'%{customdata}<br>%{x} VP<br>%{hovertext}<extra></extra>'}];layout.xaxis.title=p.value_label;layout.yaxis={title:'Tech / Location',tickmode:'array',tickvals:cells.map(c=>c.label),ticktext:cells.map(c=>GaiaTiles.metric(kind,c.label)),automargin:true};}
 layout.height=Math.max(layout.height||0,viewportHeight);layout.width=layout.width||viewportWidth;layout.showlegend=traces.length>1;el('chart').style.height=layout.height+'px';el('chart').style.width=layout.width+'px';
 if(window.Plotly){
  // react preserves Plotly's DOM and listeners instead of tearing down every view.
@@ -185,7 +185,7 @@ if(window.Plotly){
 function renderResult(data,q){
  result=data;
  el('status').textContent=`${data.games} games · ${data.samples} player-game observations · ${data.missing_elo} missing pregame Elo`;
- el('scope').hidden=el('mode').value==='lost-fleet';el('scope').textContent=el('mode').value==='base'?data.scope+'. Auction metadata is unavailable in these CSVs. All dynamic views use net scores, without historical score/quantile cutoffs.':'';
+ el('scope').hidden=el('mode').value==='lost-fleet';el('scope').textContent=el('mode').value==='base'?data.scope+'. Auction metadata is unavailable in these CSVs. All dynamic views use pre-bid scores and exclude whole games with any known pre-bid score below 100 VP.':'';
  el('csv').href='/cohort/api/export?'+q;
  // Chart changes do not require rebuilding identical comparison tables.
  const signature=JSON.stringify([data.comparisons,data.setup_comparisons.technologies]);

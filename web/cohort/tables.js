@@ -14,7 +14,7 @@
   const labels = {
     label: 'Observation', faction: 'Faction', samples: 'Samples', games: 'Games',
     available: 'Opportunities', frequency: 'Acquisition rate', score_samples: 'Measured samples',
-    mean_score: 'Mean final net VP', mean_final_score: 'Mean final net VP', mean_rank: 'Mean rank',
+    mean_score: 'Mean pre-bid VP', mean_final_score: 'Mean pre-bid VP', mean_rank: 'Mean rank',
     win_share: 'Shared wins (%)', win_baseline: 'Faction win baseline (%)',
     win_difference: 'Win difference (percentage points)',
     score_baseline: 'All-faction pair mean VP', score_difference: 'Tile VP difference',

@@ -66,7 +66,7 @@ class ComparisonTests(unittest.TestCase):
         for data in ({}, {'5':{}}, {'2':{'terrans':{}}}, {'2':{'unknown':{}}}):
             with self.assertRaises(ValueError):validate_aggregates(data)
 
-    def test_cache_imports_exact_bytes_and_serves_comparisons_without_plotting(self):
+    def test_cache_refuses_imported_aggregates_without_game_provenance(self):
         import plotly.graph_objects as go
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); source=root/'dat.json';source.write_text(json.dumps(aggregates()))
@@ -76,15 +76,15 @@ class ComparisonTests(unittest.TestCase):
                 csvs[p].write_text('Unnamed: 0,num_players,'+','.join(f'pos_{i}_faction' for i in range(1,p+1))+'\n0,'+str(p)+','+','.join(['terrans']*p)+'\n')
             with patch('gaia_stats.corrected_plots.observations',return_value=[]), patch('gaia_stats.legacy_plots.make_plot',return_value=go.Figure()), patch('gaia_stats.legacy_cache.FACTIONS',('terrans',)):
                 manifest=build_cache(root/'cache',csvs,source)
-            self.assertEqual(manifest['comparisons']['player_counts'],['2','3','4'])
+            self.assertNotIn('comparisons', manifest)
+            self.assertIn('cannot apply current whole-game eligibility', manifest['comparisons_unavailable'])
+            self.assertEqual(json.loads(source.read_text()), aggregates())
             for p in (2,3,4):
                 self.assertEqual(cache_response(root/'cache',f'/classic/data/{p}.csv',{})[0],csvs[p].read_bytes())
-                body=cache_response(root/'cache','/classic/api/comparison',{'num_players':str(p)})[0]
-                self.assertEqual(json.loads(body)['rows'][0]['round']['points'],21)
+                with self.assertRaisesRegex(ValueError, 'cannot apply current whole-game eligibility'):
+                    cache_response(root/'cache','/classic/api/comparison',{'num_players':str(p)})
             for path in ('/classic/compare','/view_tables/index.html'):
                 self.assertIn(b'Historical faction results',cache_response(root/'cache',path,{})[0])
             self.assertIn(b'openComparisonWizard',cache_response(root/'cache','/classic/assets/comparison.js',{})[0])
-            pointer=(root/'cache/current.json').read_bytes();source.write_text('{"unrelated":true}')
-            with patch('gaia_stats.corrected_plots.observations',return_value=[]), patch('gaia_stats.legacy_plots.make_plot',return_value=go.Figure()),patch('gaia_stats.legacy_cache.FACTIONS',('terrans',)),self.assertRaises(ValueError):
-                build_cache(root/'cache',csvs,source)
-            self.assertEqual((root/'cache/current.json').read_bytes(),pointer)
+            build=json.loads((root/'cache/current.json').read_text())['build']
+            self.assertFalse((root/'cache'/build/'comparisons.json').exists())

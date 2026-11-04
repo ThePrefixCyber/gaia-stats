@@ -94,7 +94,7 @@ class ReleaseTests(unittest.TestCase):
         with sqlite3.connect(current(self.store)/'base.sqlite') as db:
             rows=[json.loads(x[0]) for x in db.execute('SELECT payload FROM observations WHERE game_id=?',(payload['slug'],))]
         self.assertEqual(len(rows),4)
-        self.assertTrue(all(r['normalization_version']==2 and r['vp_ledger_complete'] for r in rows))
+        self.assertTrue(all(r['normalization_version']==3 and r['vp_ledger_complete'] for r in rows))
         self.assertEqual(next(r for r in rows if r['faction']=='ivits')['scoring_vp']['final1'],0)
         self.assertEqual(client.exports,[payload['slug']])
         self.assertEqual(self.publish()['release'],second['release'])
@@ -172,7 +172,7 @@ class ReleaseTests(unittest.TestCase):
             with patch('gaia_stats.base_cohort.response',side_effect=slow):
                 old=threading.Thread(target=request,args=('/cohort/api/stats',));old.start();self.assertTrue(entered.wait(2))
                 self.legacy.write_text(self.legacy.read_text()+' ');self.publish()
-                def validate_new(path):validating.set();return real_validate(path)
+                def validate_new(path,**kwargs):validating.set();return real_validate(path,**kwargs)
                 with patch('gaia_stats.releases.validate',side_effect=validate_new):
                     identity.return_value='checkout-changed'
                     new=threading.Thread(target=request,args=('/healthz',));new.start()

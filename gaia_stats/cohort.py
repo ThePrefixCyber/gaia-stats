@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import mean, quantiles
 
+from .eligibility import POLICY_VERSION, ExcludedGame, eligible_rows, require_eligible_export
 from .analysis import normalize, select
 from .__main__ import atomic_json
 from .scoring import complete_ledger, tile_value
@@ -66,6 +67,8 @@ def enrich(game, rows):
 def build(paths, destination):
     rows, accepted, rejected = [], [], []
     seen = {}
+    excluded = set()
+    invalid = False
     for path in sorted(map(Path, paths)):
         raw = path.read_bytes()
         provenance = {'file': path.name, 'sha256': hashlib.sha256(raw).hexdigest()}
@@ -74,6 +77,9 @@ def build(paths, destination):
             identifier=game.get('slug') or game.get('_id')
             canonical=hashlib.sha256(json.dumps(game,sort_keys=True,separators=(',',':')).encode()).hexdigest()
             if not identifier:raise ValueError('Missing game identifier')
+            provenance['game_id'] = identifier
+            require_eligible_export(game)
+            if identifier in excluded:continue
             if identifier in seen:
                 if seen[identifier]!=canonical:raise RuntimeError('Conflicting duplicate export: '+identifier)
                 rejected.append({**provenance,'reason':'Duplicate game identifier; identical export skipped'})
@@ -86,11 +92,18 @@ def build(paths, destination):
                 raise ValueError('This sample build accepts Lost Fleet only')
             rows.extend(candidate)
             accepted.append(provenance)
-        except (KeyError, ValueError, TypeError) as error:
+        except ExcludedGame as error:
+            excluded.add(identifier)
             rejected.append({**provenance, 'reason': str(error)})
-    dataset = {'schema_version': 1, 'rows': rows, 'accepted': accepted, 'rejected': rejected,
+        except (KeyError, ValueError, TypeError) as error:
+            invalid = True
+            rejected.append({**provenance, 'reason': str(error)})
+    rows = [r for r in rows if r['game_id'] not in excluded]
+    accepted = [p for p in accepted if p['game_id'] not in excluded]
+    dataset = {'schema_version': 1, 'eligibility_policy': POLICY_VERSION, 'rows': rows, 'accepted': accepted, 'rejected': rejected,
+               'excluded_game_ids': sorted(excluded),
                'scope': 'Bounded public Lost Fleet sample; not a representative archive'}
-    if not rows:raise ValueError('No accepted complete games; existing dataset preserved')
+    if not rows and (not excluded or invalid):raise ValueError('No accepted complete games; existing dataset preserved')
     atomic_json(destination, dataset)
     return dataset
 
@@ -194,7 +207,7 @@ def statistics(rows, kind):
             cells = [{'label': ' / '.join(key), 'x': key[0], 'y': key[1], **summary(group)}
                      for key, group in sorted(groups.items())]
     else:
-        sources = sorted({key for row in rows for key in row['vp_sources']})
+        sources = sorted({key for row in rows for key in row['vp_sources'] if key != 'bid'})
         # Absence in a complete reconciled ledger is an observed zero.
         cells=[]
         for source in sources:
@@ -212,7 +225,7 @@ def statistics(rows, kind):
         # Preserve the deduplicated tile summaries for API compatibility; the
         # three requested basic-tech charts use their distinct setup cohorts.
         return {**basic_statistics(rows, kind), **extra}
-    value_label='Mean final net VP'
+    value_label='Mean pre-bid VP'
     if kind in ('round-scoring','final-scoring'):
         value_label='Mean VP earned from scoring tile(s)'
         for cell in cells:
@@ -227,10 +240,10 @@ def statistics(rows, kind):
     final_note = (' Select a faction to compare final tile pairs. VP difference uses all factions with the same pair and player count; '
                   'win difference uses this faction and player count across all pairs, relaxing final-tile filters only. '
                   'Both baselines retain ruleset, Elo and other selected settings. '
-                  'Net-score shared wins split ties; these descriptive differences are not causal tile effects.') if kind=='final-scoring' else ''
+                  'Pre-bid-score shared wins split ties; these descriptive differences are not causal tile effects.') if kind=='final-scoring' else ''
     return {'kind': kind, 'cells': cells, **extra, 'unavailable_records': unavailable,
             'value_label':value_label,
-            'note': value_label+('; mean_final_score separately reports conditional final net VP' if kind in ('round-scoring','final-scoring') else '')+'. Net-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'+final_note}
+            'note': value_label+('; mean_final_score separately reports conditional pre-bid VP' if kind in ('round-scoring','final-scoring') else '')+'. Pre-bid-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'+final_note}
 
 
 def final_reference_filters(filters):
@@ -336,10 +349,12 @@ def setup_comparisons(groups):
 
 def export(dataset, filters):
     rows = cohort(dataset, filters)
-    fields = ('game_id', 'ruleset', 'faction', 'player_count', 'score', 'rank', 'win_share',
+    fields = ('game_id', 'ruleset', 'faction', 'player_count', 'score', 'reported_score', 'bid_delta', 'bid_cost',
+              'score_basis_version', 'rank', 'win_share', 'reported_rank', 'reported_win_share',
               'elo', 'layout', 'auction', 'faction_variant', 'lf_2p_4qic_effective',
               'round_scorings', 'final_scorings', 'owned_technologies', 'round_one_structures', 'vp_sources',
-              'vp_sources_raw', 'vp_ledger_complete', 'scoring_vp')
+              'vp_sources_raw', 'vp_sources_audit', 'vp_sources_csv_position',
+              'csv_source_rank', 'csv_sources_unavailable', 'vp_ledger_complete', 'scoring_vp')
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
@@ -367,7 +382,7 @@ def response(dataset, path, filters):
     if path == '/cohort/api/catalog':
         version=filters.get('ruleset','lost-fleet')
         if version not in ('base','lost-fleet'):raise ValueError('Choose base or lost-fleet')
-        rows = dataset['rows']
+        rows = eligible_rows(dataset['rows'])
         result = {key: sorted({str(r[key]) for r in rows if r['ruleset'] == version})
                   for key in ('faction', 'layout', 'auction', 'faction_variant')}
         result.update({key: sorted({tile for r in rows if r['ruleset'] == version

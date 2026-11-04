@@ -3,8 +3,11 @@ import math
 from collections import defaultdict
 from statistics import mean
 
+from .eligibility import eligible_frame
+from .score_basis import csv_score, csv_sources
+
 CORRECTED = {'basic-tech-frequency','basic-tech-score','advanced-tech-frequency',
-             'advanced-tech-score','round-scoring','final-scoring'}
+             'advanced-tech-score','round-scoring','final-scoring','round-one-structures','point-sources'}
 
 
 def finite(value):
@@ -13,21 +16,27 @@ def finite(value):
 
 def observations(data, players, min_elo=None):
     """One row per eligible player-game; all players must be explicitly not dropped."""
+    data = eligible_frame(data)
     mask = data[[f'pos_{p}_dropped' for p in range(1,players+1)]].eq(False).all(axis=1)
     clean = data.loc[mask]
     result=[]
     for index, game in enumerate(clean.to_dict(orient="records")):
-        scores=[game[f'pos_{p}_score'] for p in range(1,players+1)]
+        scores=[csv_score(game,p) for p in range(1,players+1)]
         if not all(finite(s) for s in scores):
             continue
         best=max(scores); ties=scores.count(best)
         for p,score in enumerate(scores,1):
             prefix=f'pos_{p}_'; elo=game.get(prefix+'elo')
+            source_values, source_rank = csv_sources(game, p)
+            values = dict(game)
+            for key in game:
+                if key.startswith(prefix+'score_'):
+                    values[key] = source_values.get(key.removeprefix(prefix+'score_'))
             if min_elo is not None and (not finite(elo) or elo<min_elo):continue
             result.append({'game':game.get('id',index),'faction':game[prefix+'faction'],
                            'score':score,'rank':1+sum(s>score for s in scores),
                            'win_share':1/ties if score==best else 0,'elo':elo,
-                           'values':game,'prefix':prefix})
+                           'values':values,'prefix':prefix})
     return result
 
 
@@ -53,13 +62,46 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
     from plotly.subplots import make_subplots
     rows=observations(data,players,min_elo) if prepared_rows is None else prepared_rows
     selected=[r for r in rows if r['faction']==faction]
-    metric = 'tile scoring VP / shared net-score wins' if kind in ('round-scoring','final-scoring') else 'final net VP'
+    metric = 'tile scoring VP / shared pre-bid-score wins' if kind in ('round-scoring','final-scoring') else 'pre-bid VP'
     title=f'{kind}: {faction} · observation-weighted · {metric} · n={len(selected)}'
     if min_elo is not None:title+=f' · pregame Elo ≥ {min_elo:g}'
     if not selected:
         fig=go.Figure();fig.add_annotation(text='No eligible observations',showarrow=False)
         fig.update_layout(title=title);return fig
-    if 'tech-' in kind:
+    if kind == 'round-one-structures':
+        from .chart_groups import opening_configuration
+        groups = defaultdict(list)
+        for row in selected:
+            counts = {key: row['values'].get(row['prefix']+'buildings_r_1_'+key) for key in ('m','ts','lab','PI','ac1','ac2')}
+            configuration = opening_configuration(counts)
+            if configuration is not None:
+                groups[configuration[1]].append(row)
+        from .score_colors import marker
+        labels = sorted(groups)
+        fig = go.Figure(go.Treemap(labels=labels, parents=['']*len(labels), values=[len(groups[key]) for key in labels],
+            marker=marker([mean_score(groups[key])[0] for key in labels]),
+            customdata=[mean_score(groups[key])[0] for key in labels],
+            hovertemplate='%{label}<br>Player-games=%{value}<br>Mean pre-bid VP=%{customdata}<extra></extra>'))
+    elif kind == 'point-sources':
+        fig = go.Figure()
+        for rank in range(1, players+1):
+            xs, ys = [], []
+            for row in selected:
+                if row['rank'] != rank or row['score'] <= 0:
+                    continue
+                prefix = row['prefix']+'score_'
+                sources = {key.removeprefix(prefix):value for key,value in row['values'].items() if key.startswith(prefix)}
+                research = row['values'].get(row['prefix']+'tech_score')
+                sources['research'] = research
+                for category, keys in [('round',[f'round{i}' for i in range(1,7)]),('final',['final1','final2'])]:
+                    values = [sources.pop(key,None) for key in keys]
+                    sources[category] = sum(values) if all(finite(value) for value in values) else None
+                for source,value in sorted(sources.items()):
+                    if source != 'bid' and finite(value):
+                        xs.append(source);ys.append(100*value/row['score'])
+            fig.add_trace(go.Box(x=xs,y=ys,name=f'pre-bid-score rank {rank}',boxpoints=False))
+        fig.update_layout(boxmode='group',yaxis_title='Signed share of pre-bid score (%)')
+    elif 'tech-' in kind:
         advanced=kind.startswith('advanced')
         prefix='adv_tech_taken_' if advanced else 'tech_taken_'
         columns=[c for c in data.columns if c.startswith('pos_1_'+prefix)]
@@ -78,7 +120,7 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
                     denominator=len({r['game'] for r in avail})
                     ys.append(100*numerator/denominator if denominator else None)
                     counts.append([numerator,denominator])
-                fig.add_trace(go.Bar(x=techs,y=ys,name=f'net-score rank {rank}',customdata=counts,
+                fig.add_trace(go.Bar(x=techs,y=ys,name=f'pre-bid-score rank {rank}',customdata=counts,
                     hovertemplate='%{x}<br>%{y:.2f}%<br>taken=%{customdata[0]}, available games=%{customdata[1]}<extra></extra>'))
             fig.update_layout(barmode='stack',yaxis_title='Acquired / games where available (%)')
         else:
@@ -90,10 +132,10 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
                            (slot in ('taken','not_taken') or r['values'].get(slot)==tech)]
                     value,n=mean_score(group);xs.append(value);counts.append(n)
                 fig.add_trace(go.Scatter(x=xs,y=techs,mode='markers',name=slot,text=counts,
-                    hovertemplate='%{y}<br>Mean final net VP=%{x}<br>n=%{text}<extra></extra>'))
+                    hovertemplate='%{y}<br>Mean pre-bid VP=%{x}<br>n=%{text}<extra></extra>'))
             overall,n=mean_score(selected)
             if overall is not None:fig.add_vline(x=overall,line_dash='dot',annotation_text=f'Overall mean {overall:.2f} (n={n})')
-            fig.update_layout(xaxis_title='Mean final net VP; descriptive association')
+            fig.update_layout(xaxis_title='Mean pre-bid VP; descriptive association')
     else:
         final=kind=='final-scoring'
         xs=sorted({r['values'][f'final_scoring_{i}'] for r in rows for i in (1,2)}) if final else list(range(1,7))
@@ -114,6 +156,6 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
             fig.add_trace(go.Heatmap(x=xs,y=ys,z=values,customdata=counts,hoverongaps=False,
                 hovertemplate='%{x} / %{y}<br>%{z}<br>score observations n=%{customdata}<extra></extra>',
                 colorbar={'x':.45 if col==1 else 1.02},colorscale='Greens'),row=1,col=col)
-    fig.update_layout(title=title,meta={'methodology':'corrected-v1','observations':len(selected),
+    fig.update_layout(title=title,meta={'methodology':'corrected-prebid-v2','observations':len(selected),
                                       'games':len({r['game'] for r in selected}),'min_elo':min_elo})
     return fig

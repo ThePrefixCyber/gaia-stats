@@ -11,6 +11,8 @@ from pathlib import Path
 from gaia_stats.analysis import normalize
 from gaia_stats.cohort import enrich, report, response
 game=json.loads(Path('tests/fixtures/Modern-riddle-1723.json').read_text())
+# Preserve this scoring/UI scenario as a synthetic standard-variant fixture.
+for source in ('game','data'):game[source]['options']['factionVariant']='standard'
 data={'rows':enrich(game,normalize(game)),'scope':'Comparison regression fixture'}
 print(json.dumps({'catalog':json.loads(response(data,'/cohort/api/catalog',{'ruleset':'base'})[0]),
     'stats':{faction+':'+cutoff:report(data,{'ruleset':'base','faction':faction,'min_elo':cutoff})

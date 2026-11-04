@@ -38,7 +38,7 @@ def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downlo
                     head=collect(archive,mode,client=client,max_pages=2,max_downloads=min(20,max_downloads),head_only=True,pagination=pagination)
                     status['passes'][mode+'-head']=head
                     if head['listing_error'] or head['retry']:raise ValueError(mode+' head scan did not complete cleanly')
-                    remaining=max_downloads-head['accepted']-head['rejected']-head['retry']
+                    remaining=max_downloads-head['accepted']-head['rejected']-head['retry']-head.get('excluded',0)
                     result=collect(archive,mode,client=client,max_pages=max_pages,max_downloads=remaining,pagination=pagination)
                     status['passes'][mode]=result
                     if result['listing_error'] and result.get('listing_error_detail',{}).get('http_status')==400 and not result['retry']:
@@ -70,8 +70,15 @@ def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downlo
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--seed-base',required=True);p.add_argument('--archive',required=True);p.add_argument('--legacy');p.add_argument('--max-pages',type=int,default=20);p.add_argument('--max-downloads',type=int,default=100);p.add_argument('--max-seconds',type=int,default=720);p.add_argument('--dry-run',action='store_true')
-    a=p.parse_args();result=run(a.root,a.seed_base,a.archive,a.legacy,max_pages=a.max_pages,max_downloads=a.max_downloads,max_seconds=a.max_seconds,dry_run=a.dry_run)
+    p=argparse.ArgumentParser();p.add_argument('--root');p.add_argument('--seed-base');p.add_argument('--bundle');p.add_argument('--archive',required=True);p.add_argument('--legacy');p.add_argument('--max-pages',type=int,default=20);p.add_argument('--max-downloads',type=int,default=100);p.add_argument('--max-seconds',type=int,default=720);p.add_argument('--dry-run',action='store_true')
+    a=p.parse_args()
+    if a.bundle:
+        if a.root or a.seed_base:p.error('--bundle cannot be combined with --root or --seed-base')
+        from .data_bundle import paths
+        bundle = paths(a.bundle, require_ready=True)
+        a.root, a.seed_base = bundle['root'], bundle['seed_base']
+    elif not a.root or not a.seed_base:p.error('Supply --bundle or both --root and --seed-base')
+    result=run(a.root,a.seed_base,a.archive,a.legacy,max_pages=a.max_pages,max_downloads=a.max_downloads,max_seconds=a.max_seconds,dry_run=a.dry_run)
     print(json.dumps(result,indent=2))
     if result['state']=='degraded':raise SystemExit(1)
 
