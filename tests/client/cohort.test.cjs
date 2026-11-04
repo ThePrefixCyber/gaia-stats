@@ -229,3 +229,20 @@ test('point shares keep rank groups and retained absolute mode switches without 
     assert.match(h.get('chart').textContent,/Choose a faction/);
   }finally{h.close();}
 });
+
+
+test('round comparison labels expand tile IDs without misreading the player-count prefix', async()=>{
+  const h=await harness();
+  try{
+    for(const players of [2,3,4]){
+      const text=h.w.GaiaTiles.metric('round-scoring',`${players}p: Round 1 / score1`);
+      assert.match(text,new RegExp(`${players} players: Round 1`));
+      assert.doesNotMatch(text,/Unmapped/);
+      assert.equal(text.split(' / ')[1],h.w.GaiaTiles.label('round','score1').replace(/ \[[^\]]+\]$/, ''));
+      assert.doesNotMatch(text,/score1/);
+    }
+    await h.select('plot','round-scoring');await h.select('scoring-view','absolute');
+    assert.match(h.get('note').textContent,/When every player in each game is included/);
+    assert.match(h.get('note').textContent,/filters can omit seats/);
+  }finally{h.close();}
+});
