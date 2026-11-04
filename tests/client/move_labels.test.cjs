@@ -14,5 +14,5 @@ test('token boundaries and move sequence preserve semantics',()=>{
  assert.equal(T.move('terrans booster booster-lostfleet-former'),'terrans booster '+T.label('booster','booster-lostfleet-former'));
  assert.equal(T.move('darkanians spaceshipAction rebellion qic'),'darkanians Rebellion QIC action');
  assert.equal(T.move('example-booster10 booster10suffix tech9_test 2A10 spend 3pw for 1o'),'example-booster10 booster10suffix tech9_test 2A10 spend 3pw for 1o');
- assert.equal(T.move('terrans tech free3. up nav'),'terrans Tech Free 3. Research Nav');
+ assert.equal(T.move('terrans tech free3. up nav'),'terrans Tech Free. Research Nav');
 });

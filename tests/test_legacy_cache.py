@@ -155,3 +155,19 @@ class LegacyCacheTests(unittest.TestCase):
         self.assertFalse(published.balance_variant.eq('more-balanced').any())
         self.assertEqual(len(pd.read_csv(source)), 5687)
         self.assertEqual(catalog['datasets']['4']['excluded_games'], 2592)
+
+    def test_legacy_free_plots_require_recomputed_grouped_cache_not_just_new_labels(self):
+        from gaia_stats.technology_locations import FREE_GROUPING_VERSION
+        for kind in ('basic-tech-score', 'point-sources'):
+            (self.build / 'plots' / f'4-terrans-{kind}.html').write_text('<html><body>Combined chart</body></html>')
+            response, body = self.request('/classic/plot', f'players=4&faction=terrans&plot={kind}')
+            self.assertEqual(response['status'], '400 Bad Request')
+            self.assertIn(b'combined Free statistics', body)
+        self.catalog['free_grouping_version'] = FREE_GROUPING_VERSION
+        (self.build / 'manifest.json').write_text(json.dumps(self.catalog))
+        for path, query in (('/classic/plot', 'players=4&faction=terrans&plot=basic-tech-score&download=1'),
+                            ('/4p/base_tech_analysis/pos_on_score/terrans.html', ''),
+                            ('/classic/plot', 'players=4&faction=terrans&plot=point-sources')):
+            response, body = self.request(path, query)
+            self.assertEqual(response['status'], '200 OK')
+            self.assertIn(b'Combined chart', body)

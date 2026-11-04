@@ -5,6 +5,7 @@ from statistics import mean
 
 from .eligibility import eligible_frame
 from .score_basis import csv_score, csv_sources
+from .technology_locations import location, sources as grouped_sources
 
 CORRECTED = {'basic-tech-frequency','basic-tech-score','advanced-tech-frequency',
              'advanced-tech-score','round-scoring','final-scoring','round-one-structures','point-sources'}
@@ -96,7 +97,7 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
                 for category, keys in [('round',[f'round{i}' for i in range(1,7)]),('final',['final1','final2'])]:
                     values = [sources.pop(key,None) for key in keys]
                     sources[category] = sum(values) if all(finite(value) for value in values) else None
-                for source,value in sorted(sources.items()):
+                for source,value in sorted(grouped_sources(sources).items()):
                     if source != 'bid' and finite(value):
                         xs.append(source);ys.append(100*value/row['score'])
             fig.add_trace(go.Box(x=xs,y=ys,name=f'pre-bid-score rank {rank}',boxpoints=False))
@@ -124,12 +125,16 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
                     hovertemplate='%{x}<br>%{y:.2f}%<br>taken=%{customdata[0]}, available games=%{customdata[1]}<extra></extra>'))
             fig.update_layout(barmode='stack',yaxis_title='Acquired / games where available (%)')
         else:
-            for slot in slots+['not_taken','taken']:
+            slot_groups = defaultdict(list)
+            for slot in slots:
+                slot_groups['tech_' + location(slot.removeprefix('tech_'))].append(slot)
+            for slot in [*slot_groups,'not_taken','taken']:
                 xs=[];counts=[]
                 for tech in techs:
                     group=[r for r in selected if available(r,tech) and
                            ((not taken(r,tech)) if slot=='not_taken' else taken(r,tech)) and
-                           (slot in ('taken','not_taken') or r['values'].get(slot)==tech)]
+                           (slot in ('taken','not_taken') or any(r['values'].get(source)==tech
+                            for source in slot_groups[slot]))]
                     value,n=mean_score(group);xs.append(value);counts.append(n)
                 fig.add_trace(go.Scatter(x=xs,y=techs,mode='markers',name=slot,text=counts,
                     hovertemplate='%{y}<br>Mean pre-bid VP=%{x}<br>n=%{text}<extra></extra>'))

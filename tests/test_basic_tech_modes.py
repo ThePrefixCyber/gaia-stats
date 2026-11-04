@@ -48,13 +48,12 @@ class BasicTechModesTests(unittest.TestCase):
         total=sum(c['samples'] for c in self.plot('basic-tech-score',rows)['cells'] if c['tile_id']=='tech2' and c['location_id'] in ('taken','not_taken'))
         self.assertEqual(total,3)
 
-    def test_aliases_merge_without_changing_original_and_free_collapses_only_setup_modes(self):
+    def test_aliases_merge_without_changing_original_and_free_collapses_all_modes(self):
         row=copy.deepcopy(self.rows[0]);row['technologies']={'free1':'1q_1o','free2':'tech1','free3':'tech4'}
         row['owned_technologies']=[{'tile':'tech1','slot':'free1'}]
-        for kind in ('basic-tech-frequency','basic-tech-setup-score'):
+        for kind in KINDS:
             c=self.cell(kind,'tech1','free',rows=[row])
             self.assertEqual(c['samples'],1)
-        c=self.cell('basic-tech-score','tech1','free1',rows=[row]);self.assertEqual(c['samples'],1)
         self.assertEqual(row['technologies']['free1'],'1q_1o')
         a=copy.deepcopy(row);a['game_id']='other';a['technologies']={'free1':'tech1'}
         c=self.cell('basic-tech-setup-score','tech1','free',rows=[row,a]);self.assertEqual(c['samples'],2)

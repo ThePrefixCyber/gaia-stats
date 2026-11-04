@@ -16,6 +16,7 @@ import tempfile
 
 from .__main__ import atomic_json
 from .score_basis import SCORE_BASIS_VERSION
+from .technology_locations import FREE_GROUPING_VERSION
 from .eligibility import POLICY_VERSION, eligible_frame, excluded_csv_game
 
 FACTIONS = ('terrans', 'lantids', 'hadsch-hallas', 'ivits', 'baltaks', 'geodens',
@@ -57,6 +58,7 @@ def build_cache(cache_root, csv_paths, comparison_path=None, *, excluded_game_id
     stage = Path(tempfile.mkdtemp(prefix='build-', dir=root))
     manifest = {'schema_version': 1, 'eligibility_policy': POLICY_VERSION, 'score_basis_version': SCORE_BASIS_VERSION, 'ruleset': 'base', 'source': 'Tim Gladyshev original notebooks',
                 'methodology': 'corrected-prebid-v2 (all eight families)',
+                'free_grouping_version': FREE_GROUPING_VERSION,
                 'datasets': {}, 'plots': list(PLOTS), 'factions': list(FACTIONS)}
     try:
         (stage / 'plots').mkdir()
@@ -186,6 +188,8 @@ def cache_response(cache_root, path, query, *, excluded_game_ids=()):
         players, faction, kind = query.get('players'), query.get('faction'), query.get('plot')
         if players not in ('2', '3', '4') or faction not in FACTIONS or kind not in PLOTS:
             raise ValueError('Choose a supported player count, base faction and original plot')
+        if kind in ('basic-tech-score', 'point-sources') and manifest.get('free_grouping_version') != FREE_GROUPING_VERSION:
+            raise ValueError('Classic plot unavailable until rebuilt with combined Free statistics; use current cohort views.')
         filename = f'{players}-{faction}-{kind}.html'
         body = (base / 'plots' / filename).read_bytes()
         # Relabel the presentation at serve time; cached statistical artifacts stay immutable.

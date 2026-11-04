@@ -7,6 +7,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -212,8 +213,9 @@ def statistics(rows, kind):
         cells=[]
         for source in sources:
             # Historical CSV absence is unknown, unlike a complete raw VP ledger.
-            values=[r['vp_sources'].get(source,0) for r in rows
-                    if complete_ledger(r) or source in r['vp_sources']]
+            values=[value for row in rows
+                    if type(value := row['vp_sources'].get(source, 0 if complete_ledger(row) else None)) in (int, float)
+                    and math.isfinite(value)]
             cell={'label':source,'samples':len(values)}
             if values:
                 q1,median,q3=quantiles(values,n=4,method='inclusive') if len(values)>1 else (values[0],)*3

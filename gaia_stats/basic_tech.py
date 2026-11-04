@@ -7,10 +7,12 @@ from functools import lru_cache
 from pathlib import Path
 import json
 
+from .technology_locations import FREE_SLOTS, location
+
 KINDS = ('basic-tech-frequency', 'basic-tech-score', 'basic-tech-setup-score')
 TRACKS = ('terra','nav','int','gaia','eco','sci')
 SHIPS = ('rebellion','tfmars','eclipse','twilight')
-FREE = ('free1','free2','free3')
+FREE = FREE_SLOTS
 
 
 @lru_cache(maxsize=1)
@@ -69,7 +71,7 @@ def statistics(rows, kind):
         # A row counts once for each distinct tile/location opportunity.
         opportunities=defaultdict(set)
         for slot,tile in setup.items():
-            opportunities[(tile,'free' if slot in FREE and kind!='basic-tech-score' else slot)].add(slot)
+            opportunities[(tile,location(slot))].add(slot)
         for (tile,slot),original_slots in opportunities.items():
             key=(tile,slot);setup_counts[key]+=1
             if kind=='basic-tech-setup-score':
@@ -96,7 +98,7 @@ def statistics(rows, kind):
     if kind=='basic-tech-frequency':
         note='Acquisition frequency by setup bucket; denominator: eligible player-games with this tile at this location and known ownership. Free positions combine here. Exhausted ship piles are recovered from owned tiles; remaining copies are not denominators.'
     elif kind=='basic-tech-score':
-        note='Mean pre-bid VP among players who acquired the tile from its original setup location—not the research track advanced. Taken / Not taken pool all setup locations, including free positions, with known ownership. One player-game per tile; observation-weighted, unlike Tim’s position-weighted means. Dotted line: selected-cohort mean. Associations, not causal impacts.'
+        note='Mean pre-bid VP among players who acquired the tile from its original setup location—not the research track advanced. Taken / Not taken pool all setup locations, including free positions, with known ownership. Free positions combine; one player-game per tile/location bucket. Observation-weighted, unlike Tim’s position-weighted means. Dotted line: selected-cohort mean. Associations, not causal impacts.'
     else:
         note='Mean pre-bid VP of every eligible player-game with the tile at this setup location, acquired or not. Free positions combine here. Dotted line: selected-cohort mean. Associations, not causal impacts.'
     return {'kind':kind,'cells':cells,'unavailable_records':unknown,'value_label':'Acquisition frequency' if kind.endswith('frequency') else 'Mean pre-bid VP','note':note}

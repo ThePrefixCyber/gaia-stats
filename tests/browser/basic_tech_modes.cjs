@@ -25,6 +25,7 @@ const setup="import json;from pathlib import Path;from gaia_stats.analysis impor
     assert.equal(chart.layout.shapes.length,11);for(const a of chart.layout.annotations.filter(a=>a.y===1.04)){const rgb=a.font.color.match(/[a-f\d]{2}/gi).map(v=>parseInt(v,16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);assert.ok(1.05/(rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722+.05)>=4.5,'heading contrast '+a.text);}assert.ok(chart.layout.annotations.some(a=>a.text==='Twilight'));assert.ok(chart.layout.annotations.some(a=>a.text==='No tech slot'));
     assert.equal(chart.layout.annotations.filter(a=>a.text==='Free').length,1);
    }else{
+    assert.equal(chart.data.filter(t=>t.name==='Free').length,1);assert.ok(chart.data.every(t=>!/^Free [123]$/.test(t.name)));
     assert.equal(chart.layout.yaxis.tickvals.length,new Set(chart.layout.yaxis.tickvals).size);
     assert.ok(chart.layout.yaxis.ticktext.includes('1o3k'));
     const ship=chart.data.find(t=>t.name==='TF Mars'),i=ship.y.indexOf('ship-tech-resource');
@@ -49,10 +50,10 @@ const setup="import json;from pathlib import Path;from gaia_stats.analysis impor
   await page.selectOption('#plot','basic-tech-score');await page.waitForTimeout(120);
   await page.evaluate(()=>{const e=document.querySelector('#chart'),t=e.data.findIndex(t=>t.name==='TF Mars');Plotly.Fx.hover(e,[{curveNumber:t,pointNumber:e.data[t].y.indexOf('ship-tech-resource')}]);});
   assert.doesNotMatch(await page.locator('#chart .hoverlayer').textContent(),/ship-tech-|tech\d+/);
-  // Exercise all 14 legend entries, including a track absent from this game's acquisitions.
+  // Exercise all 12 legend entries, including a track absent from this game's acquisitions.
   await page.evaluate(()=>{const cells=result.plots['basic-tech-score'].cells;if(!cells.some(c=>c.location_id==='int'&&c.samples))cells.push({...cells.find(c=>c.samples),location_id:'int'});});
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(250);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  await page.locator('#chart-focus').click();await page.waitForTimeout(150);assert.equal((await page.locator('#chart-panel').boundingBox()).width,390);assert.equal(await page.locator('#chart .legendtext').count(),14);const axis=await page.locator('#chart .xtitle').boundingBox();for(const entry of await page.locator('#chart .legendtext').all()){const legend=await entry.boundingBox();assert.ok(axis.y+axis.height+4<=legend.y,JSON.stringify({axis,legend}));}await page.locator('#chart-panel').screenshot({path:'/tmp/gaia-basic-tech-mobile.png'});await page.keyboard.press('Escape');
+  await page.locator('#chart-focus').click();await page.waitForTimeout(150);assert.equal((await page.locator('#chart-panel').boundingBox()).width,390);assert.equal(await page.locator('#chart .legendtext').count(),12);const axis=await page.locator('#chart .xtitle').boundingBox();for(const entry of await page.locator('#chart .legendtext').all()){const legend=await entry.boundingBox();assert.ok(axis.y+axis.height+4<=legend.y,JSON.stringify({axis,legend}));}await page.locator('#chart-panel').screenshot({path:'/tmp/gaia-basic-tech-mobile.png'});await page.keyboard.press('Escape');
   assert.equal(await page.locator('#filters [name=faction]').count(),0);assert.equal(await page.locator('#chart-panel [name=faction]').count(),1);
   await page.locator('#chart-focus').click();const faction=await page.locator('[name=faction] option').nth(1).getAttribute('value');await page.selectOption('[name=faction]',faction);await page.waitForFunction(f=>result?.filters.faction===f&&document.querySelector('#chart').getAttribute('aria-busy')==='false',faction);assert.equal(await page.locator('[name=faction]').isEnabled(),true);await page.keyboard.press('Escape');
   assert.equal(await page.locator('#scope').textContent(),'');assert.equal(await page.locator('#scope').isVisible(),false);assert.deepEqual(errors,[]);console.log('Three basic-tech modes: actual Plotly, fixture means/counts, 11 buckets, no exposed IDs, separate cache, focus/escape/mobile passed');

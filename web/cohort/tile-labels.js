@@ -2,7 +2,7 @@
 'use strict';
 window.GaiaTiles = (() => {
   const registry = __TILE_REGISTRY__;
-  const tracks = {terra:'Terra',nav:'Nav',int:'Artificial Intelligence',gaia:'Gaia',eco:'Econ',sci:'Sci',ext:'Extra',free:'Free',free1:'Free 1',free2:'Free 2',free3:'Free 3',rebellion:'Rebellion',tfmars:'TF Mars',eclipse:'Eclipse',twilight:'Twilight',taken:'Taken',not_taken:'Not taken'};
+  const tracks = {terra:'Terra',nav:'Nav',int:'Artificial Intelligence',gaia:'Gaia',eco:'Econ',sci:'Sci',ext:'Extra',free:'Free',free1:'Free',free2:'Free',free3:'Free',rebellion:'Rebellion',tfmars:'TF Mars',eclipse:'Eclipse',twilight:'Twilight',taken:'Taken',not_taken:'Not taken'};
   function faction(id){return String(id).replaceAll('-', ' ').replace(/\b\w/g,letter=>letter.toUpperCase());}
   function label(category, id) {
     const entries = registry[category] || {};

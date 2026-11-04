@@ -30,7 +30,7 @@ test('legacy source axes include every rank, preserve raw values and separate ma
   assert.deepEqual(Array.from(g.layout.xaxis.tickvals),['research','tech_score']);
   assert.deepEqual(Array.from(g.layout.xaxis.ticktext),['Research','Research']);
   assert.deepEqual(Array.from(g.layout.xaxis2.tickvals),['tech-free1','adv-terra']);
-  assert.deepEqual(Array.from(g.layout.xaxis2.ticktext),['Tech Free 1','Adv Terra']);
+  assert.deepEqual(Array.from(g.layout.xaxis2.ticktext),['Tech Free','Adv Terra']);
   for(const {update} of updates){assert.doesNotMatch(update.hovertext.flat().join("\n"),forbidden);assert.equal(update.name,undefined);}
  }finally{dom.window.close();}
 });

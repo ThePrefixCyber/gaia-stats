@@ -2,7 +2,7 @@
 'use strict';
 window.GaiaBasicTech = (() => {
  const locations=['terra','nav','int','gaia','eco','sci','rebellion','tfmars','eclipse','twilight','free'];
- const colors={terra:'#a52a2a',nav:'#708090',int:'#26a65b',gaia:'#bf55ec',eco:'#d4ad00',sci:'#038aff',rebellion:'#a97c50',tfmars:'#bfc5cf',eclipse:'#d1c792',twilight:'#9872a2',free:'#8c929a',free1:'#737b85',free2:'#919aa5',free3:'#afb7c0',taken:'#15803d',not_taken:'#b91c1c'};
+ const colors={terra:'#a52a2a',nav:'#708090',int:'#26a65b',gaia:'#bf55ec',eco:'#d4ad00',sci:'#038aff',rebellion:'#a97c50',tfmars:'#bfc5cf',eclipse:'#d1c792',twilight:'#9872a2',free:'#8c929a',taken:'#15803d',not_taken:'#b91c1c'};
  const headingColors={terra:'#7f1d1d',nav:'#475569',int:'#166534',gaia:'#7e22ce',eco:'#715500',sci:'#0369a1',rebellion:'#79502f',tfmars:'#475569',eclipse:'#6b5900',twilight:'#6b4580',free:'#4b5563'};
  const name=location=>GaiaTiles.position(location);
  function build(kind,cells,result,width,height){
@@ -27,7 +27,7 @@ window.GaiaBasicTech = (() => {
     hovertemplate:'%{customdata[0]} · %{customdata[1]}<br>Rank '+rank+' and taken / available: %{y:.2f}%<br>Rank '+rank+' / taken: %{customdata[4]:.2f}%<br>Cohort rank '+rank+': %{customdata[5]:.2f}%<br>Taken=%{customdata[2]}; known inventory=%{customdata[3]}; unknown=%{customdata[6]}<extra></extra>'}));
    layout.barmode='stack';layout.width=Math.max(width,ticks.length*30);layout.margin={l:65,r:25,t:70,b:145};layout.xaxis={tickmode:'array',tickvals:ticks,ticktext:labels,tickangle:-60,range:[-.7,cursor-.6],fixedrange:false};layout.yaxis={title:'Player-games taken (%)',range:[0,100]};
   }else{
-   const tiles=[...new Set(cells.map(c=>c.tile_id))],series=[...locations.filter(x=>x!=='free'),...(kind==='basic-tech-score'?['free1','free2','free3','taken','not_taken']:['free'])];
+   const tiles=[...new Set(cells.map(c=>c.tile_id))],series=[...locations,...(kind==='basic-tech-score'?['taken','not_taken']:[])];
    traces=series.filter(slot=>cells.some(c=>c.location_id===slot&&c.samples)).map(slot=>{
     const group=tiles.map(tile=>cells.find(c=>c.tile_id===tile&&c.location_id===slot));
     return {type:'scatter',mode:'markers',name:name(slot),x:group.map(c=>c?.mean_score??null),y:tiles,

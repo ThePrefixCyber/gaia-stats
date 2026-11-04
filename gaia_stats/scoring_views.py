@@ -7,6 +7,7 @@ import math
 from collections import defaultdict
 from statistics import quantiles
 from .scoring import complete_ledger, tile_value
+from .technology_locations import sources as grouped_sources
 
 ROUND_FILTERS = tuple(f'round{i}' for i in range(1, 7))
 
@@ -59,6 +60,7 @@ class ScoringViews:
             group = (row['player_count'], row['rank'])
             self.share_groups.add(group)
             complete = complete_ledger(row)
+            row = {**row, 'vp_sources': grouped_sources(row['vp_sources'], complete=complete)}
             self.complete_counts[group] += int(complete)
             sources = (set(row['vp_sources']) - set(ROUND_FILTERS) - {'final1','final2','bid'}) | {'round','final'}
             self.sources.update(sources)
@@ -79,7 +81,7 @@ class ScoringViews:
                 values=self.shares[key]+[0.]*zeros
                 cells.append({'label':source,'player_count':group[0],'rank':group[1],**distribution(values)})
         return {'rank_cells':cells,'invalid_share_denominators':self.invalid_denominators,
-                'share_note':'Signed contribution / positive pre-bid score × 100, separately by competition rank and player count. Tied ranks stay tied. Round and final tiles are combined; all other source IDs follow the dataset (canonical historical base categories, raw BGS sources for Lost Fleet). Unknown contributions are excluded per source; complete-ledger absences are zero. Nonpositive scores excluded from shares only. Auction contributions are excluded from both numerator and denominator; charging remains signed. Games with any known pre-bid score below 100 VP are excluded. Descriptive distributions, not additive median percentages.'}
+                'share_note':'Signed contribution / positive pre-bid score × 100, separately by competition rank and player count. Tied ranks stay tied. Round and final tiles are combined; Free technology VP is summed within each player-game; other source IDs follow the dataset (canonical historical base categories, raw BGS sources for Lost Fleet). Unknown contributions are excluded per source; complete-ledger absences are zero. Nonpositive scores excluded from shares only. Auction contributions are excluded from both numerator and denominator; charging remains signed. Games with any known pre-bid score below 100 VP are excluded. Descriptive distributions, not additive median percentages.'}
 
     def add_rounds(self, selected, reference):
         for row in reference:

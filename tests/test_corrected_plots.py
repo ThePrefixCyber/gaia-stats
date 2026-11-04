@@ -70,3 +70,29 @@ class CorrectedPlotTests(unittest.TestCase):
         self.assertEqual(observations(data,2)[0]['rank'],1) # Auction points are excluded
         fig=make_plot('advanced-tech-score',data,players=2,faction='terrans',min_elo=200)
         self.assertEqual(len(fig.data),0)
+
+    def test_free_score_pools_players_once_before_weighted_mean(self):
+        games = [game(score=100, identifier=str(i)) for i in range(3)] + [game(score=200, identifier='last')]
+        for i, row in enumerate(games):
+            row['tech_free1'] = 'a' if i < 3 else 'other'
+            row['tech_free2'] = 'a' if i == 0 else 'other'
+            row['tech_free3'] = 'a' if i == 3 else 'other'
+        fig = make_plot('basic-tech-score', pd.DataFrame(games), players=2, faction='terrans')
+        traces = {trace.name:trace for trace in fig.data}
+        self.assertFalse({'tech_free1','tech_free2','tech_free3'} & traces.keys())
+        self.assertEqual(traces['tech_free'].x[0], 145)
+        self.assertEqual(int(traces['tech_free'].text[0]), 4)
+        self.assertEqual(int(traces['tech_terra'].text[0]), 4)
+        self.assertTrue({'taken','not_taken'} <= traces.keys())
+
+    def test_classic_source_distributions_sum_free_within_player_before_rank_shares(self):
+        frame = pd.DataFrame([game()])
+        rows = observations(frame, 2)
+        row = next(r for r in rows if r['faction']=='terrans')
+        for slot, value in [('free1',3),('free2',5),('free3',7)]:
+            row['values'][row['prefix']+'score_tech-'+slot] = value
+        fig = make_plot('point-sources', frame, players=2, faction='terrans', _observations=rows)
+        first = fig.data[0]
+        self.assertEqual(list(first.x).count('tech-free'), 1)
+        self.assertFalse({'tech-free1','tech-free2','tech-free3'} & set(first.x))
+        self.assertEqual(first.y[list(first.x).index('tech-free')], 12.5)

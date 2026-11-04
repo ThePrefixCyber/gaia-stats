@@ -11,7 +11,7 @@ faction. Raw exports, historical CSVs, scoring and archive checkpoints are uncha
    player-game/tile/bucket counts once.
 2. **Score when taken** shows pooled mean pre-bid VP among acquirers at each
    original location, plus Taken and Not taken summaries and the cohort mean.
-   Individual free slots remain separate here. This matches the meaning of
+   Free slots combine into one observation-weighted group, with a player-game/tile counted once even if duplicated across free slots. This matches the meaning of
    Tim's “By Track Taken”: source location, not the research track advanced.
 3. **Score by setup** includes every player-game where the tile occupied that
    location, regardless of acquisition. Free slots combine. Missing ownership
@@ -82,3 +82,25 @@ Faction option text uses title case and spaces; canonical values stay unchanged.
 The Elo field has no spinner and accepts blank or a positive integer (including
 leading zeros). Invalid text is marked accessibly and blocks both form submission
 and requests caused by chart or faction changes.
+
+## Combined Free locations
+
+All three current basic-tech views and corrected classic score plots pool Free 1,
+Free 2 and Free 3 before computing counts or means. Distinct tiles, players and
+games stay distinct; repeated source/ownership entries for the same tile in one
+player-game do not add observations. Research and ship positions stay separate.
+
+Lost Fleet VP-source distributions sum `tech-free1`, `tech-free2` and `tech-free3`
+within each player-game into `tech-free` before calculating absolute VP, signed
+shares, quartiles or rank-conditioned summaries. Complete-ledger absences are zero;
+missing or invalid components in incomplete ledgers remain unknown.
+
+Selected-cohort CSVs expose the combined analytical `vp_sources`; original
+numbered sources remain in `vp_sources_raw`/`vp_sources_audit`, and original
+owned-tech positions remain intact. Historical wide CSV downloads and notebooks
+are audit inputs, not relabelled analytical aggregates.
+
+Regenerate the classic cache with the updated code before serving its basic-tech
+score and point-source plots. Their cache must have `free_grouping_version: free-v1`;
+older affected charts fail closed instead of showing three identically named
+series. Other classic routes and the shared Plotly asset are unaffected.

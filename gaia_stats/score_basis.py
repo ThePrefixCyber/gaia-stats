@@ -7,6 +7,9 @@ CSV totals use that player’s positive ``bid``; source bundles are remapped bel
 from collections import defaultdict
 import math
 
+from .scoring import complete_ledger
+from .technology_locations import sources as grouped_sources
+
 SCORE_BASIS_VERSION = 'prebid-v1'
 
 
@@ -149,7 +152,8 @@ def analysis_rows(rows):
         row['score'] = score
         row['score_basis_version'] = SCORE_BASIS_VERSION
         row['score_basis'] = 'Final VP excluding signed auction contribution'
-        row['vp_sources'] = {key: value for key, value in sources.items() if key != 'bid'}
+        row['vp_sources'] = grouped_sources({key: value for key, value in sources.items() if key != 'bid'},
+                                           complete=complete_ledger(row))
         if not new:
             rerank.add(row['game_id'])
             row['rank'] = row['win_share'] = None
