@@ -197,6 +197,7 @@ def check(contract_path, root, seed, cache):
             if game_id not in blocked:
                 seed_games.setdefault(str(players), set()).add(game_id)
     require(isinstance(imports, dict) and bool(imports) and all(key in ('2', '3', '4') for key in imports), 'Seed source-player-count provenance is missing')
+    require(set(seed_games) <= set(imports), 'Seed source-player-count provenance omits observed games')
     base_counts = check_sqlite(release / 'base.sqlite', contract, blocked, 'Base release')
     if contract['schema_version']==2:
         require(manifest.get('base_source_policy')==contract['base_source_policy'], 'Base source policy is not ready')
@@ -259,6 +260,8 @@ def check(contract_path, root, seed, cache):
                 chart = build / 'plots' / f'{players}-{faction}-{plot}.html'
                 require(chart.is_file() and chart.stat().st_size > 0, 'Missing classic chart')
     require(observed_ids == cached_ids, 'Classic index does not match downloadable games')
+    require(observed_ids == set().union(*seed_games.values()),
+            'Classic downloads omit original CSV seed games')
     return {'release': release.name, 'cache': build.name, 'datasets': counts, 'seed': seed_counts,
             'eligibility_policy': contract['eligibility_policy'], 'score_basis_version': contract['score_basis_version']}
 
