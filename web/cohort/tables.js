@@ -92,11 +92,19 @@
         const value = row[key];
         const cell = make('td');
         cell.className = key === 'label' || key === 'faction' ? 'cell-label' : 'cell-number';
-        const display = displayValue(key, value);
+        const hasSamples = !isMissing(value) && row[key + '_n'] != null;
+        const vpUnit = hasSamples && /^(round[1-6]|final[12]|adv-.+)$/.test(key) ? ' VP' : '';
+        const display = displayValue(key, value) + vpUnit;
         cell.append(make('span', display, isMissing(value) ? 'unavailable' : 'cell-value'));
         if (typeof value === 'number' && Number.isFinite(value)) cell.title = ['win_share','win_baseline','win_difference'].includes(key) ? String(100 * value) + (key === 'win_difference' ? ' percentage points' : '%') : String(value);
-        if (!isMissing(value) && row[key + '_n'] != null) {
-          cell.append(make('small', `${integer.format(row[key + '_n'])} samples`, 'sample-count'));
+        if (hasSamples) {
+          const count = row[key + '_n'];
+          const samples = `${integer.format(count)} ${count === 1 ? 'sample' : 'samples'}`;
+          // Keep a literal separator, even in copied text, unstyled content and
+          // screen readers. A visual line break alone concatenates the numbers.
+          cell.append(make('small', ` (${samples})`, 'sample-count'));
+          cell.setAttribute('aria-label', `${display}; ${samples}`);
+          if (cell.title) cell.title += `${vpUnit}; ${samples}`;
         }
         tr.append(cell);
       }

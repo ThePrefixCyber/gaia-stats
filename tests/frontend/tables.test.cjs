@@ -62,7 +62,8 @@ test('render creates semantic controls, announces sort, keeps the header button 
   const th = head(root)[2], button = th.children[0];
   assert.equal(th.attributes.scope, 'col'); assert.equal(button.type, 'button');
   assert.equal(button.attributes['aria-label'], 'Round 1: sort ascending');
-  assert.equal(body(root)[0].children[2].textContent, '101,200 samples');
+  assert.equal(body(root)[0].children[2].textContent, '10 VP (1,200 samples)');
+  assert.equal(body(root)[0].children[2].attributes['aria-label'], '10 VP; 1,200 samples');
   click(root, 2);
   assert.deepEqual(names(root), ['Tile 2', 'Zero', 'Tile 10', 'Tie', 'Unknown']);
   assert.equal(head(root)[2].children[0], button);
@@ -128,4 +129,15 @@ test('integrated final-scoring baselines retain percentage and percentage-point 
   assert.match(head(root)[2].textContent,/percentage points/);
   assert.equal(body(root)[0].children[0].title,'75%');
   assert.equal(body(root)[0].children[2].title,'25 percentage points');
+});
+
+test('score and count stay separated when copied, unstyled, or read by assistive technology', () => {
+  const root=target();
+  render(root,[{round1:14,round1_n:71,final1:0,final1_n:1,'adv-terra':147,'adv-terra_n':1}],['round1','final1','adv-terra']);
+  const cells=body(root)[0].children;
+  assert.equal(cells[0].textContent,'14 VP (71 samples)');
+  assert.equal(cells[0].attributes['aria-label'],'14 VP; 71 samples');
+  assert.equal(cells[1].textContent,'0 VP (1 sample)');
+  assert.equal(cells[2].textContent,'147 VP (1 sample)');
+  assert.equal(cells[2].title,'147 VP; 1 sample');
 });

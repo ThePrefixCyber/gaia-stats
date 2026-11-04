@@ -11,6 +11,7 @@ from statistics import quantiles
 
 from .cohort import report, export, cohort, final_scoring_comparison
 from .scoring import complete_ledger
+from .scoring_views import ScoringViews, round_reference_filters
 
 
 class Cell:
@@ -26,7 +27,7 @@ class Cell:
             elif key in ('samples', 'games', 'available', 'score_samples') or key.endswith('_n'):
                 self.value[key] = self.value.get(key, 0) + value
             elif key.startswith('mean_') or key == 'win_share' or (setup and key not in ('faction', 'samples') and not key.endswith('_n')):
-                weight_key = key + '_n' if setup else ('score_samples' if key == 'mean_score' and 'score_samples' in item else 'samples')
+                weight_key = key + '_n' if setup or key + '_n' in item else ('score_samples' if key == 'mean_score' and 'score_samples' in item else 'samples')
                 weight = item.get(weight_key, 0)
                 if value is not None and weight:
                     self.means[key].append(value * weight)
@@ -46,17 +47,24 @@ class Cell:
 
 
 def statistics(batches, filters, scope):
+    views = ScoringViews(filters)
     total = Cell()
     comparisons = defaultdict(Cell)
     setup = {kind: defaultdict(Cell) for kind in ('rounds', 'finals', 'technologies')}
     plot_cells = defaultdict(lambda: defaultdict(Cell))
     plot_meta = {}
+    tile_cells = defaultdict(lambda: defaultdict(Cell))
     points = {}
     prior_complete = 0
     identifiers = []
     missing_elo = 0
     for batch in batches:
         part = report({'rows': batch, 'scope': scope}, filters, finalize=False)
+        selected = cohort({'rows': batch}, filters)
+        if filters.get('plot') in (None, 'point-sources'):
+            views.add_points(selected)
+        if filters.get('plot') in (None, 'round-scoring'):
+            views.add_rounds(selected, cohort({'rows': batch}, round_reference_filters(filters)))
         # Batch size is below report's raw-identifier/box-value limit.
         identifiers.extend(part['record_ids'])
         missing_elo += part['missing_elo']
@@ -68,9 +76,11 @@ def statistics(batches, filters, scope):
                 setup[kind][cell['faction']].add(cell, setup=True)
         for kind, plot in part['plots'].items():
             if kind not in plot_meta:
-                plot_meta[kind] = {k: v for k, v in plot.items() if k not in ('cells', 'unavailable_records')}
+                plot_meta[kind] = {k: v for k, v in plot.items() if k not in ('cells', 'tile_cells', 'unavailable_records')}
                 plot_meta[kind]['unavailable_records'] = 0
             plot_meta[kind]['unavailable_records'] += plot['unavailable_records']
+            for cell in plot.get('tile_cells', []):
+                tile_cells[kind][cell['label']].add(cell)
             if kind == 'point-sources':
                 # Only selected complete ledgers imply zeros for absent sources.
                 complete = sum(complete_ledger(row) for row in cohort({'rows': batch}, filters))
@@ -89,7 +99,9 @@ def statistics(batches, filters, scope):
                     plot_cells[kind][key].add(cell)
             if kind == 'point-sources':
                 prior_complete += complete
-    if not identifiers:
+    # A selected faction can have no rows while other factions still supply
+    # valid comparison tables. Only a genuinely empty input needs this fallback.
+    if not plot_meta:
         return report({'rows': [], 'scope': scope}, filters)
     plots = {}
     for kind, meta in plot_meta.items():
@@ -106,8 +118,14 @@ def statistics(batches, filters, scope):
         else:
             cells = [cell.finish() for _, cell in sorted(plot_cells[kind].items())]
         plots[kind] = {**meta, 'cells': cells}
+        if 'tech-' in kind:
+            plots[kind]['tile_cells'] = [cell.finish() for _, cell in sorted(tile_cells[kind].items())]
         if kind == 'final-scoring':
             plots[kind] = final_scoring_comparison(plots[kind], filters)
+        elif kind == 'point-sources':
+            plots[kind].update(views.points())
+        elif kind == 'round-scoring':
+            plots[kind].update(views.rounds())
     return {'ruleset': filters['ruleset'], 'filters': filters, **total.finish(),
             'record_ids': identifiers if len(identifiers)<=2000 else None,
             'cohort_hash': hashlib.sha256('\n'.join(sorted(identifiers)).encode()).hexdigest(),

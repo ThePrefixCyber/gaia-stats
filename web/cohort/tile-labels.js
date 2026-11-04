@@ -17,6 +17,10 @@ window.GaiaTiles = (() => {
       const [tile, slot] = value.split(' / ');
       return label(kind.startsWith('advanced') ? 'advanced' : 'basic', tile) + (slot ? ' / ' + position(slot) : '');
     }
+    if (kind === 'round-scoring' && /^[234]p: Round [1-6] \/ /.test(value)) {
+      const [round, tile] = value.split(' / ');
+      return round.replace(/^([234])p: /, '$1 players: ') + ' / ' + label('round', tile).replace(/ \[[^\]]+\]$/, '');
+    }
     if (kind === 'final-scoring' && /^[234]p: /.test(value)) {
       const [pair, faction] = value.split(' / ');
       return pair.slice(0,2) + ': ' + pair.slice(4).split(' + ').map(id=>label('final',id)).join(' + ') + ' / ' + faction;

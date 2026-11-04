@@ -126,10 +126,10 @@ def dataset(path,filters):
 def response(path, route, filters):
     from . import streaming_cohort
     if route=='/cohort/api/stats':
-        # Final-scoring baselines need other factions; output cohort/CSV stays selected.
+        # Every stats response includes all-faction comparison tables. Load the
+        # other factions here; report() still selects the graph's faction.
         read_filters = dict(filters)
-        if filters.get('plot') in (None, 'final-scoring'):
-            read_filters.pop('faction', None)
+        read_filters.pop('faction', None)
         result=streaming_cohort.statistics(batches(path,read_filters),filters,SCOPE)
         return json.dumps(result,allow_nan=False).encode(),'application/json'
     if route=='/cohort/api/export':
