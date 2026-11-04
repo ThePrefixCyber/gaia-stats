@@ -25,33 +25,36 @@ const initialMode=new URLSearchParams(location.search).get('ruleset');if(['base'
 function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;memories[loadedMode]={...Object.fromEntries(new FormData(form)),plot:el('plot').value};try{sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));}catch{}}
 function query(){const q=new URLSearchParams(new FormData(form));q.set('ruleset',el('mode').value);q.set('plot',el('plot').value);for(const [key,value] of [...q])if(value==='')q.delete(key);return q;}
 function table(target,rows,columns,options){GaiaTables.render(target,rows,columns,options);}
-// Keep zero meaningful instead of allowing Plotly to stretch the observed minimum
-// to the light end of its built-in (reversed for this bundle) Blues palette.
+// Fixed score landmarks: filtering changes the visible range, never a score's
+// color. Smooth tails distinguish values outside the usual 0–300 VP range.
+function treemapScoreColor(score){
+ const red='#ff3b30',grey='#d1d5db',blue='#081d58',green='#22c55e';
+ const blend=(a,b,t)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)*(1-t)+parseInt(b.slice(i,i+2),16)*t).toString(16).padStart(2,'0')).join('');
+ if(score<0)return blend(red,'#7f1d1d',1-100/(100-score));
+ if(score<=100)return blend(red,grey,score/100);
+ if(score<=150)return blend(grey,'#5b8ac6',(score-100)/50);
+ if(score<=200)return blend('#5b8ac6',blue,(score-150)/50);
+ if(score<=225)return blend(blue,'#166534',(score-200)/25);
+ if(score<=300)return blend('#166534',green,(score-225)/75);
+ return blend(green,'#bbf7d0',1-100/(score-200));
+}
 function treemapScoreStyle(values){
- const grey='#d1d5db',blue='#081d58',rust='#9c3b16';
- const colors=values.map(value=>Number.isFinite(value)?value:null);
- const observed=colors.filter(value=>value!==null);
- const low=Math.min(0,...observed),high=Math.max(0,...observed);
- const marker={colors,autocolorscale:false,reversescale:false,cauto:false,
-  cmin:low,cmax:high||1,showscale:low!==high,
-  colorbar:{title:'Mean net VP',tickmode:'array',tickformat:'.4~g'}};
- if(!observed.length){
-  marker.colorscale=[[0,grey],[1,grey]];
-  return {marker,note:'Mean net VP is unavailable; no score color scale is shown.'};
- }
- if(low===high){
-  marker.colorscale=[[0,grey],[1,grey]];
-  return {marker,note:'All displayed mean net VP values are 0 (grey).'};
- }
- // Use a separate rust arm for losses, keeping zero at its actual position.
- // A negative-only selection ends at zero, without inventing positive scores.
- marker.cmax=high;
- const zero=-low/(high-low);
- marker.colorscale=low<0
-  ? high>0?[[0,rust],[zero,grey],[zero+(1-zero)/2,'#5b8ac6'],[1,blue]]:[[0,rust],[1,grey]]
-  : [[0,grey],[.5,'#5b8ac6'],[1,blue]];
- marker.colorbar.tickvals=[...(low<0?[low,low/2]:[]),0,...(high>0?[high/4,high/2,3*high/4,high]:[])];
- return {marker,note:'Color: grey = 0 VP.'+(high>0?' Very dark blue = the highest mean net VP shown.':'')+(low<0?' Rust indicates negative mean net VP.':'')};
+ const observed=values.filter(Number.isFinite);
+ const low=Math.min(0,...observed),high=Math.max(300,...observed);
+ // Explicit colors keep unavailable observations separate from both red 0 and
+ // grey 100. Plotly permits color strings alongside numeric marker values.
+ const marker={colors:values.map(value=>Number.isFinite(value)?value:'#ffffff'),
+  autocolorscale:false,reversescale:false,cauto:false,cmin:low,cmax:high,
+  showscale:observed.length>0,colorbar:{title:'Mean net VP',tickmode:'array',tickformat:'.4~g'}};
+ // Every observed score is a stop, so nonlinear tail colors remain identical
+ // across selections as well. Interpolate continuously between distinct stops.
+ const stops=[...new Set([low,0,50,100,150,200,225,300,high,...observed])].sort((a,b)=>a-b);
+ marker.colorscale=stops.map(score=>[(score-low)/(high-low),treemapScoreColor(score)]);
+ marker.colorbar.tickvals=[...(low<0?[low]:[]),0,100,200,300,...(high>300?[high]:[])];
+ const note=observed.length
+  ? 'Fixed score colors: 0 VP = bright red; 100 VP = grey; 200 VP = dark blue. Above 200, blue blends into green; higher values become lighter green.'+(low<0?' Negative scores use darker reds.':'')+(observed.length<values.length?' White tiles have unavailable mean net VP.':'')
+  : 'Mean net VP is unavailable; white tiles have no score color scale.';
+ return {marker,note};
 }
 function draw(){if(!result)return;const kind=el('plot').value,p=result.plots[kind];if(!p)return;const cells=p.cells;el('note').textContent=p.note+` ${p.unavailable_records} records unavailable for this metric.`;const columns=kind==='point-sources'?['label','samples','median','q1','q3']:kind.includes('tech-')?['label','samples','available','frequency','mean_score','mean_rank']:(kind==='round-scoring'||kind==='final-scoring')?['label','games','samples','score_samples','mean_score','mean_final_score','win_share',...(kind==='final-scoring'?['score_baseline','score_baseline_samples','score_difference','win_baseline','win_baseline_samples','win_difference']:[])]:['label','samples','mean_score','mean_rank','win_share'];table(el('metrics'),cells,columns,{kind,labels:{mean_score:p.value_label}});
 if(!cells.length){if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent=p.selection_required==='faction'?'Choose a faction above to compare final-scoring tile pairs. Pooling all players produces fixed prize-pool averages.':'No observations available for this selection.';return;}
