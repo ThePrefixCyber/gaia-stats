@@ -133,6 +133,9 @@ class Application:
             if environ.get("REQUEST_METHOD") != "GET":
                 status, body, content_type = "405 Method Not Allowed", b"GET only", "text/plain"
                 headers.append(("Allow", "GET"))
+            elif path.startswith('/art/'):
+                from .artwork import response as artwork_response
+                body, content_type = artwork_response(path)
             elif path.startswith('/cohort/'):
                 body, content_type = self.cohort_response(path, filters)
                 if path == '/cohort/api/export':
