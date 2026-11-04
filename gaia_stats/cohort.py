@@ -15,6 +15,7 @@ from statistics import mean, quantiles
 from .analysis import normalize, select
 from .__main__ import atomic_json
 from .scoring import complete_ledger, tile_value
+from .scoring_views import ScoringViews, round_reference_filters
 
 PLOTS = ('advanced-tech-frequency', 'advanced-tech-score', 'basic-tech-frequency',
          'basic-tech-score', 'round-one-structures', 'final-scoring',
@@ -248,6 +249,14 @@ def report(dataset, filters, *, finalize=True):
             plots[kind] = final_scoring_comparison(plot, filters) if finalize else plot
         else:
             plots[kind] = statistics(rows, kind)
+        if finalize and kind in ('point-sources', 'round-scoring'):
+            view = ScoringViews(filters)
+            if kind == 'point-sources':
+                view.add_points(rows)
+                plots[kind].update(view.points())
+            else:
+                view.add_rounds(rows, cohort(dataset, round_reference_filters(filters)))
+                plots[kind].update(view.rounds())
     return {'ruleset': filters['ruleset'], 'filters': filters, **summary(rows),
             'record_ids': [f"{r['game_id']}:{r['faction']}" for r in rows] if len(rows)<=2000 else None,
             'cohort_hash': hashlib.sha256('\n'.join(sorted(f"{r['game_id']}:{r['faction']}" for r in rows)).encode()).hexdigest(),

@@ -85,6 +85,8 @@ test('technology pairs and repeated views reuse responses and preserve compariso
     assert.equal(h.draws.at(-1)[0].type,'scatter');
     await h.select('plot','round-scoring');
     assert.equal(h.requests.length,2);
+    assert.match(h.get('chart').textContent,/Choose a faction/);
+    await h.select('scoring-view','absolute');
     assert.equal(h.draws.at(-1)[0].type,'heatmap');
     await h.select('plot','advanced-tech-frequency');
     assert.equal(h.requests.length,2);
@@ -202,5 +204,28 @@ test('failed catalog can retry without saving the previous mode form', async()=>
     assert.equal(h.get('plot').value,'round-scoring');
     assert.equal(h.requests.at(-1).ruleset,'lost-fleet');
     assert.equal(h.requests.at(-1).min_elo,'200');
+  }finally{h.close();}
+});
+
+
+test('point shares keep rank groups and retained absolute mode switches without requests', async()=>{
+  const h=await harness();
+  try{
+    await h.select('plot','point-sources');
+    const requests=h.requests.length;
+    assert.ok(h.draws.at(-1).every(t=>t.name.includes('rank')));
+    assert.equal(h.get('chart').layout.yaxis.title,'Signed share of final net score (%)');
+    assert.match(h.get('metrics').textContent,/Median score share/);
+    await h.select('scoring-view','absolute');
+    assert.equal(h.get('chart').layout.yaxis.title,'VP contribution (signed)');
+    await h.select('scoring-view','relative');
+    assert.ok(h.draws.at(-1).every(t=>t.name.includes('rank')));
+    assert.equal(h.requests.length,requests);
+    await h.select('plot','round-scoring');
+    assert.match(h.get('chart').textContent,/Choose a faction/);
+    await h.select('scoring-view','absolute');
+    assert.equal(h.draws.at(-1)[0].type,'heatmap');
+    await h.select('scoring-view','relative');
+    assert.match(h.get('chart').textContent,/Choose a faction/);
   }finally{h.close();}
 });

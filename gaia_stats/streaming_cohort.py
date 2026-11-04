@@ -11,6 +11,7 @@ from statistics import quantiles
 
 from .cohort import report, export, cohort, final_scoring_comparison
 from .scoring import complete_ledger
+from .scoring_views import ScoringViews, round_reference_filters
 
 
 class Cell:
@@ -46,6 +47,7 @@ class Cell:
 
 
 def statistics(batches, filters, scope):
+    views = ScoringViews(filters)
     total = Cell()
     comparisons = defaultdict(Cell)
     setup = {kind: defaultdict(Cell) for kind in ('rounds', 'finals', 'technologies')}
@@ -57,6 +59,11 @@ def statistics(batches, filters, scope):
     missing_elo = 0
     for batch in batches:
         part = report({'rows': batch, 'scope': scope}, filters, finalize=False)
+        selected = cohort({'rows': batch}, filters)
+        if filters.get('plot') in (None, 'point-sources'):
+            views.add_points(selected)
+        if filters.get('plot') in (None, 'round-scoring'):
+            views.add_rounds(selected, cohort({'rows': batch}, round_reference_filters(filters)))
         # Batch size is below report's raw-identifier/box-value limit.
         identifiers.extend(part['record_ids'])
         missing_elo += part['missing_elo']
@@ -108,6 +115,10 @@ def statistics(batches, filters, scope):
         plots[kind] = {**meta, 'cells': cells}
         if kind == 'final-scoring':
             plots[kind] = final_scoring_comparison(plots[kind], filters)
+        elif kind == 'point-sources':
+            plots[kind].update(views.points())
+        elif kind == 'round-scoring':
+            plots[kind].update(views.rounds())
     return {'ruleset': filters['ruleset'], 'filters': filters, **total.finish(),
             'record_ids': identifiers if len(identifiers)<=2000 else None,
             'cohort_hash': hashlib.sha256('\n'.join(sorted(identifiers)).encode()).hexdigest(),
