@@ -17,8 +17,12 @@ Ranks are actual net-score competition ranks: tied players retain the same
 rank, rather than being separated by player order. Player counts are also
 separate. Each observed ratio has equal weight; this is not a ratio of sums.
 Round tiles and final tiles are combined, requiring all component values.
-Sources remain signed, including bid and charging costs, and starting VP is
-shown. Therefore valid contributions in a reconciled complete ledger sum to
+All other source IDs follow the dataset: canonical historical categories for
+base, verbatim raw BGS IDs for Lost Fleet. No base category is inserted into a
+Lost Fleet distribution. Thus `federation`, `spend`, and `initial` remain those
+raw IDs; they are not accompanied by invented zero `fed`, `resource`, or `init`
+series. Sources remain signed, including bid and charging costs, and starting
+VP is shown. Therefore valid contributions in a reconciled complete ledger sum to
 100% per player (category medians need not). A positive source can exceed 100%
 when deductions reduce the denominator. No historical >100 cutoff is applied.
 Nonpositive/nonfinite scores are excluded only from the percentage mode, with

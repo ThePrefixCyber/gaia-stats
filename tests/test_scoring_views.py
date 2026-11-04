@@ -86,3 +86,21 @@ class ScoringViewsTests(unittest.TestCase):
         cell=next(c for c in expected['plots']['point-sources']['rank_cells'] if c['label']=='final' and c['rank']==rows[0]['rank'])
         expected_values=[100*(r['scoring_vp']['final1']+r['scoring_vp']['final2'])/r['score'] for r in rows if r['rank']==rows[0]['rank']]
         self.assertEqual(cell['values'],expected_values)
+
+
+    def test_real_lost_fleet_keeps_raw_source_vocabulary_and_reconciles_shares(self):
+        raw=json.loads((Path(__file__).parent/'fixtures/Jubilant-rover-3041.json').read_text())
+        rows=enrich(raw,normalize(raw))
+        view=ScoringViews(self.filters);view.add_points(rows)
+        labels={c['label'] for c in view.points()['rank_cells']}
+        observed={k for row in rows for k in row['vp_sources']}
+        self.assertEqual(labels, (observed-{f'round{i}' for i in range(1,7)}-{'final1','final2'})|{'round','final'})
+        self.assertTrue({'federation','spend','initial'}<=labels)
+        self.assertFalse({'fed','resource','init','research','adv','booster','tech_basic','qic'}&labels)
+        for row in rows:
+            single=ScoringViews(self.filters);single.add_points([row])
+            cells={c['label']:c for c in single.points()['rank_cells']}
+            self.assertAlmostEqual(sum(c['values'][0] for c in cells.values()),100)
+            for source in ('federation','spend','initial'):
+                if source in row['vp_sources']:
+                    self.assertAlmostEqual(cells[source]['values'][0],100*row['vp_sources'][source]/row['score'])

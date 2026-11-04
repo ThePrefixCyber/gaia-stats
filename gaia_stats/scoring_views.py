@@ -6,7 +6,7 @@ streaming and in-memory reports use identical definitions.
 import math
 from collections import defaultdict
 from statistics import quantiles
-from .scoring import complete_ledger, tile_value, BASE_SOURCES
+from .scoring import complete_ledger, tile_value
 
 ROUND_FILTERS = tuple(f'round{i}' for i in range(1, 7))
 
@@ -41,7 +41,7 @@ class ScoringViews:
         self.filters = filters
         self.shares = defaultdict(list)
         self.share_groups = set()
-        self.sources = (set(BASE_SOURCES) - set(ROUND_FILTERS) - {'final1','final2'}) | {'round','final'}
+        self.sources = {'round','final'}  # Other labels must occur in this dataset's source vocabulary.
         # Missing source in complete ledgers means zero, including sources first
         # encountered in later batches. Track zero counts per rank/count group.
         self.complete_counts = defaultdict(int)
@@ -79,7 +79,7 @@ class ScoringViews:
                 values=self.shares[key]+[0.]*zeros
                 cells.append({'label':source,'player_count':group[0],'rank':group[1],**distribution(values)})
         return {'rank_cells':cells,'invalid_share_denominators':self.invalid_denominators,
-                'share_note':'Signed contribution / positive final net score × 100, separately by competition rank and player count. Tied ranks stay tied. Round and final tiles are combined. Unknown contributions are excluded per source; complete-ledger absences are zero. Nonpositive scores excluded from shares only. No historical >100 cutoff or bid restoration; charge and bid remain negative. Descriptive distributions, not additive median percentages.'}
+                'share_note':'Signed contribution / positive final net score × 100, separately by competition rank and player count. Tied ranks stay tied. Round and final tiles are combined; all other source IDs follow the dataset (canonical historical base categories, raw BGS sources for Lost Fleet). Unknown contributions are excluded per source; complete-ledger absences are zero. Nonpositive scores excluded from shares only. No historical >100 cutoff or bid restoration; charge and bid remain negative. Descriptive distributions, not additive median percentages.'}
 
     def add_rounds(self, selected, reference):
         for row in reference:
