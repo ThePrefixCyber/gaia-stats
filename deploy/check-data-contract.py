@@ -139,8 +139,13 @@ def check_sqlite(path, contract, blocked, label):
     with sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True) as db:
         require(db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok', label + ': SQLite integrity failure')
         markers(metadata(db), contract, label)
-        return check_rows((json.loads(row[0]) for row in db.execute('SELECT payload FROM observations ORDER BY game_id,faction')),
-                          contract, 'base', blocked, label)
+        def rows():
+            for game_id, faction, payload in db.execute('SELECT game_id,faction,payload FROM observations ORDER BY game_id,faction'):
+                row = json.loads(payload)
+                require(isinstance(row, dict) and row.get('game_id') == game_id and row.get('faction') == faction,
+                        label + ': SQLite columns and payload identity disagree')
+                yield row
+        return check_rows(rows(), contract, 'base', blocked, label)
 
 
 def contract_value(path):
