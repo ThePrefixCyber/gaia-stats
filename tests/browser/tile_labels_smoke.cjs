@@ -17,7 +17,7 @@ print(json.dumps({'catalog':json.loads(response(d,'/cohort/api/catalog',{})[0]),
  else if(url.pathname==='/cohort/tables.js'){body=fs.readFileSync('web/cohort/tables.js','utf8');contentType='application/javascript';}
  else if(url.pathname==='/cohort/styles.css'){body=fs.readFileSync('web/cohort/styles.css','utf8');contentType='text/css';}
  else if(url.pathname==='/cohort/app.js'){body=fs.readFileSync('web/cohort/app.js','utf8');contentType='application/javascript';}
- else if(url.pathname.includes('plotly')){body='window.Plotly={purge(){},newPlot(el,traces,layout){window.lastPlot={traces,layout};}}';contentType='application/javascript';}
+ else if(url.pathname.includes('plotly')){body='window.Plotly={purge(){},react(el,traces,layout){window.lastPlot={traces,layout};el.data=traces;return Promise.resolve();}}';contentType='application/javascript';}
  else if(url.pathname.endsWith('/catalog')){body=JSON.stringify(data.catalog);contentType='application/json';}
  else if(url.pathname.endsWith('/stats')){queries.push(url.search);body=JSON.stringify(data.stats);contentType='application/json';}
  else body=fs.readFileSync('web/cohort/index.html','utf8');

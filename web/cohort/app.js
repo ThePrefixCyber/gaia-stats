@@ -25,6 +25,34 @@ const initialMode=new URLSearchParams(location.search).get('ruleset');if(['base'
 function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;memories[loadedMode]={...Object.fromEntries(new FormData(form)),plot:el('plot').value};try{sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));}catch{}}
 function query(){const q=new URLSearchParams(new FormData(form));q.set('ruleset',el('mode').value);q.set('plot',el('plot').value);for(const [key,value] of [...q])if(value==='')q.delete(key);return q;}
 function table(target,rows,columns,options){GaiaTables.render(target,rows,columns,options);}
+// Keep zero meaningful instead of allowing Plotly to stretch the observed minimum
+// to the light end of its built-in (reversed for this bundle) Blues palette.
+function treemapScoreStyle(values){
+ const grey='#d1d5db',blue='#081d58',rust='#9c3b16';
+ const colors=values.map(value=>Number.isFinite(value)?value:null);
+ const observed=colors.filter(value=>value!==null);
+ const low=Math.min(0,...observed),high=Math.max(0,...observed);
+ const marker={colors,autocolorscale:false,reversescale:false,cauto:false,
+  cmin:low,cmax:high||1,showscale:low!==high,
+  colorbar:{title:'Mean net VP',tickmode:'array',tickformat:'.4~g'}};
+ if(!observed.length){
+  marker.colorscale=[[0,grey],[1,grey]];
+  return {marker,note:'Mean net VP is unavailable; no score color scale is shown.'};
+ }
+ if(low===high){
+  marker.colorscale=[[0,grey],[1,grey]];
+  return {marker,note:'All displayed mean net VP values are 0 (grey).'};
+ }
+ // Use a separate rust arm for losses, keeping zero at its actual position.
+ // A negative-only selection ends at zero, without inventing positive scores.
+ marker.cmax=high;
+ const zero=-low/(high-low);
+ marker.colorscale=low<0
+  ? high>0?[[0,rust],[zero,grey],[zero+(1-zero)/2,'#5b8ac6'],[1,blue]]:[[0,rust],[1,grey]]
+  : [[0,grey],[.5,'#5b8ac6'],[1,blue]];
+ marker.colorbar.tickvals=[...(low<0?[low,low/2]:[]),0,...(high>0?[high/4,high/2,3*high/4,high]:[])];
+ return {marker,note:'Color: grey = 0 VP.'+(high>0?' Very dark blue = the highest mean net VP shown.':'')+(low<0?' Rust indicates negative mean net VP.':'')};
+}
 function draw(){if(!result)return;const kind=el('plot').value,p=result.plots[kind];if(!p)return;const cells=p.cells;el('note').textContent=p.note+` ${p.unavailable_records} records unavailable for this metric.`;const columns=kind==='point-sources'?['label','samples','median','q1','q3']:kind.includes('tech-')?['label','samples','available','frequency','mean_score','mean_rank']:(kind==='round-scoring'||kind==='final-scoring')?['label','games','samples','score_samples','mean_score','mean_final_score','win_share',...(kind==='final-scoring'?['score_baseline','score_baseline_samples','score_difference','win_baseline','win_baseline_samples','win_difference']:[])]:['label','samples','mean_score','mean_rank','win_share'];table(el('metrics'),cells,columns,{kind,labels:{mean_score:p.value_label}});
 if(!cells.length){if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent=p.selection_required==='faction'?'Choose a faction above to compare final-scoring tile pairs. Pooling all players produces fixed prize-pool averages.':'No observations available for this selection.';return;}
 let traces=[],layout={margin:{b:180,t:40},title:names[kind],yaxis:{title:p.value_label,automargin:true},xaxis:{automargin:true},showlegend:true};
@@ -47,7 +75,11 @@ else if(kind==='final-scoring'){
 else if(kind==='round-scoring'){const xs=[...new Set(cells.map(c=>c.x))],ys=[...new Set(cells.map(c=>c.y))],lookup=new Map(cells.map(c=>[JSON.stringify([c.x,c.y]),c]));traces=['mean_score','win_share'].map((metric,index)=>({type:'heatmap',x:xs,y:ys,z:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c&&c[metric]!=null?c[metric]*(index?100:1):null;})),text:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c?`${GaiaTiles.metric(kind,c.label)}<br>n=${index?c.samples:c.score_samples}`:'Unavailable';})),hovertemplate:'%{x} / %{y}<br>'+(index?'Shared wins (%)':p.value_label)+' %{z}<br>%{text}<extra></extra>',colorscale:'Blues',hoverongaps:false,xaxis:index?'x2':'x',yaxis:index?'y2':'y',colorbar:{x:index?1.02:.4,thickness:12}}));layout.margin.t=100;layout.title={text:names[kind],y:.98};layout.margin.l=120;layout.xaxis.domain=[0,.38];layout.xaxis2={domain:[.64,1],anchor:'y2',automargin:true};layout.yaxis.domain=[0,1];layout.yaxis2={domain:[0,1],anchor:'x2',automargin:true};layout.annotations=[{text:p.value_label,x:.18,y:1.06,xref:'paper',yref:'paper',showarrow:false},{text:'Shared wins (%)',x:.82,y:1.06,xref:'paper',yref:'paper',showarrow:false}];const category=kind==='round-scoring'?'round':'final';const axisLabels=values=>values.map(v=>category==='round'&&/^Round [1-6]$/.test(v)?v:GaiaTiles.label(category,v));for(const key of ['xaxis','xaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:xs,ticktext:axisLabels(xs)});for(const key of ['yaxis','yaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:ys,ticktext:axisLabels(ys)});layout.yaxis.title='Scoring tile';}
 
 else if(kind.endsWith('frequency')){traces=[1,2,3,4].map(rank=>({type:'bar',name:'Rank '+rank,x:cells.map(c=>GaiaTiles.metric(kind,c.label)),y:cells.map(c=>c.available?(c.rank_counts[rank]||0)/c.available:null),hovertext:cells.map(c=>`taken=${c.samples}; available=${c.available}`),hovertemplate:'%{x}<br>%{y}<br>%{hovertext}<extra></extra>'}));layout.barmode='stack';layout.yaxis.title='Acquisition frequency by final rank';}
-else if(kind==='round-one-structures'){traces=[{type:'treemap',labels:cells.map(c=>GaiaTiles.metric(kind,c.label)),parents:cells.map(()=>''),values:cells.map(c=>c.samples),marker:{colors:cells.map(c=>c.mean_score),colorscale:'Blues',showscale:true,colorbar:{title:'Mean net VP'}},hovertext:cells.map(c=>`n=${c.samples}; mean net VP=${c.mean_score}`),hovertemplate:'%{label}<br>%{hovertext}<extra></extra>'}];}
+else if(kind==='round-one-structures'){
+ const scoreStyle=treemapScoreStyle(cells.map(c=>c.mean_score));
+ el('note').textContent+=' '+scoreStyle.note;
+ traces=[{type:'treemap',labels:cells.map(c=>GaiaTiles.metric(kind,c.label)),parents:cells.map(()=>''),values:cells.map(c=>c.samples),marker:scoreStyle.marker,hovertext:cells.map(c=>`n=${c.samples}; mean net VP=${c.mean_score??'unavailable'}`),hovertemplate:'%{label}<br>%{hovertext}<extra></extra>'}];
+}
 else {traces=[{type:'scatter',mode:'markers',name:'Mean net VP',y:cells.map(c=>GaiaTiles.metric(kind,c.label)),x:cells.map(c=>c.mean_score),hovertext:cells.map(c=>`n=${c.samples}; mean rank=${c.mean_rank??'unavailable'}`),hovertemplate:'%{y}<br>%{x} VP<br>%{hovertext}<extra></extra>'}];layout.xaxis.title=p.value_label;layout.yaxis.title='Technology / position';}
 el('chart').style.height=(layout.height||600)+'px';
 if(window.Plotly){

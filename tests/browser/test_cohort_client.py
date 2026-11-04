@@ -196,7 +196,10 @@ class CohortBrowserTests(unittest.TestCase):
         self.open()
         for kind in PLOTS:
             self.select_plot(kind)
-            self.page.wait_for_function("document.getElementById('chart').data?.length > 0")
+            if kind == 'final-scoring':
+                self.assertIn('Choose a faction', self.page.locator('#chart').inner_text())
+            else:
+                self.page.wait_for_function("document.getElementById('chart').data?.length > 0")
         self.assertEqual(len(self.requests), 6)  # Two paired technology views share data.
         self.page.evaluate('for(const entry of responses.values())entry.time-=RESPONSE_TTL+1')
         self.select_plot('advanced-tech-frequency')
@@ -206,6 +209,18 @@ class CohortBrowserTests(unittest.TestCase):
         screenshot = os.environ.get('COHORT_SCREENSHOT')
         if screenshot:
             self.page.locator('#chart').screenshot(path=screenshot)
+
+    def test_actual_treemap_uses_grey_zero_and_dark_blue_maximum(self):
+        self.open()
+        self.select_plot('round-one-structures')
+        self.page.wait_for_function("document.getElementById('chart').data?.[0]?.type === 'treemap'")
+        marker = self.page.evaluate("document.getElementById('chart').data[0].marker")
+        self.assertEqual(marker['cmin'], 0)
+        self.assertEqual(marker['cmax'], max(marker['colors']))
+        self.assertEqual(marker['colorscale'][0], [0, '#d1d5db'])
+        self.assertEqual(marker['colorscale'][-1], [1, '#081d58'])
+        self.page.wait_for_function("[...document.querySelectorAll('#chart path.surface')].some(e=>getComputedStyle(e).fill==='rgb(8, 29, 88)')")
+        self.page.locator('#chart').screenshot(path='/tmp/gaia-integrated-treemap.png')
 
 
 if __name__ == '__main__':

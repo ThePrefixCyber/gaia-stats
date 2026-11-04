@@ -97,3 +97,20 @@ rendering inside that wrapper. Keep its `tables.js` before `app.js`. Plotly is n
 loaded by `app.js`, so do not restore the old blocking Plotly script in HTML.
 The early WSGI static allowlist already includes `tables.js` and `styles.css` so
 those companion assets also avoid the calculation lock when their routes exist.
+
+## Integration verification (2026-11-04)
+
+The reviewed performance tree is integrated on top of the readable-table,
+tile-label and corrected final-scoring work. The interrupted-catalog
+`loadedMode` guard remains intact. Comparison tables receive raw numeric values
+and preserve sort state; final-scoring means and observed baselines are unchanged.
+Plotly loads asynchronously and updates through `react`. Both scoring heatmaps
+use keyed cell lookup. Only the mean-net-VP treemap adopts the separately
+reviewed grey-zero / darkest-blue-observed-maximum scale.
+
+Integration checks: 172 Python tests; 26 Node tests (8 client, 11 table, 7 color);
+25 tile-helper assertions; 7 actual Chromium/Plotly client tests; dedicated
+final-scoring desktop/mobile checks; and the eight-mode smoke test. The actual
+rendered treemap includes the expected darkest-blue SVG fill. Browser tests use
+fixture responses, not production data. Earlier benchmark figures above belong
+to the original performance experiment and are not new production timings.
