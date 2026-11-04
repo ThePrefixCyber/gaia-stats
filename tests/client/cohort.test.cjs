@@ -333,12 +333,29 @@ test('integrated scoring and frequency controls retain independent modes across 
  }
  });
 
- test('more-balanced is never offered or restored; 4-QIC selection remains independent',async()=>{
- const old=fixtures['lost-fleet'].catalog.faction_variant;fixtures['lost-fleet'].catalog.faction_variant=[...old,'more-balanced'];
- const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{player_count:'2',faction_variant:'more-balanced',lf_2p_4qic_mode:'variant-only'}}});
- try{const fields=h.get('filters').elements;assert.ok(![...fields.faction_variant.options].some(o=>o.value==='more-balanced'));assert.equal(fields.faction_variant.value,'');assert.equal(fields.lf_2p_4qic_mode.value,'variant-only');assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');assert.notEqual(h.requests.at(-1).faction_variant,'more-balanced');}
- finally{h.close();fixtures['lost-fleet'].catalog.faction_variant=old;}
- });
+test('retired faction-variant controls never filter requests and saved values are discarded',async()=>{
+ for(const value of ['standard','beta','more-balanced']){
+  const h=await harness({url:'http://localhost/',memories:{base:{faction_variant:value,faction_variant_version:'1'},'lost-fleet':{player_count:'2',faction_variant:value,faction_variant_version:'1',lf_2p_4qic_mode:'variant-only'}}});
+  try{
+   const fields=h.get('filters').elements;
+   assert.equal(fields.faction_variant,undefined);assert.equal(fields.faction_variant_version,undefined);
+   assert.doesNotMatch(h.get('filters').textContent,/Faction variant|Faction balance|Balance version/);
+   assert.equal(fields.lf_2p_4qic_mode.value,'variant-only');assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');
+   for(const mode of ['base','lost-fleet']){
+    await h.select('mode',mode);await h.apply();
+    assert.ok(!('faction_variant' in h.requests.at(-1)));assert.ok(!('faction_variant_version' in h.requests.at(-1)));
+    assert.doesNotMatch(h.get('csv').href,/faction_variant/);
+    const saved=JSON.parse(h.w.sessionStorage.getItem('gaia-cohort-filters'));
+    for(const state of Object.values(saved)){assert.ok(!('faction_variant' in state));assert.ok(!('faction_variant_version' in state));}
+   }
+   assert.equal(fields.lf_2p_4qic_mode.value,'variant-only');
+  }finally{h.close();}
+ }
+ // Cleanup also happens when invalid saved Elo prevents the first statistics request.
+ const h=await harness({url:'http://localhost/',memories:{base:{faction_variant:'beta'},'lost-fleet':{min_elo:'0',faction_variant:'standard'}}});
+ try{assert.equal(h.requests.length,0);assert.doesNotMatch(h.w.sessionStorage.getItem('gaia-cohort-filters'),/faction_variant/);}finally{h.close();}
+});
+
 
 test('player count defaults to 4; 4-QIC only submits for 2/Any and remembers hidden choices',async()=>{
  const h=await harness({url:'http://localhost/'});try{
@@ -602,4 +619,20 @@ test('front page omits source-slot scoring summaries but retains both detailed s
    assert.match(h.get('csv').href,new RegExp('plot='+kind));
   }
  }finally{h.close();}
+});
+
+
+test('opening explorer has no faction-balance selectors or hidden variant query filters',async()=>{
+ const explorer=readFileSync('web/index.html','utf8');
+ const dom=new JSDOM(explorer,{url:'http://localhost/explorer/',runScripts:'outside-only'}),w=dom.window,requests=[];
+ w.fetch=async url=>{requests.push(new URL(url,w.location).searchParams);return {ok:true,json:async()=>({games:0,player_records:0,groups:[],rows:[],rejected_games:0,skill:{mode:'all',thresholds:{},rated_counts:{}},options:{faction_variant:['standard','beta','more-balanced'],faction_variant_version:['1'],auction:['bid']}})};};
+ try{
+  w.eval([...explorer.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1]);await tick();await tick();
+  for(const mode of ['base','lost-fleet']){
+   w.document.getElementById(mode).click();await tick();await tick();
+   assert.doesNotMatch(w.document.getElementById('setup').textContent,/Faction balance|Balance version|more-balanced/);
+   assert.equal(requests.at(-1).has('faction_variant'),false);assert.equal(requests.at(-1).has('faction_variant_version'),false);
+   assert.doesNotMatch(w.document.getElementById('export').href,/faction_variant/);
+  }
+ }finally{w.close();}
 });

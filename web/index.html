@@ -21,9 +21,9 @@
 <details><summary>Inspect matching games and full opening moves</summary><div id="games"></div></details>
 </section></main>
 <script src="/cohort/tile-labels.js"></script><script>
-const labels={skill:'Player skill',faction:'Faction',player_count:'Players',opponent:'Opponent faction',min_elo:'Custom player Elo cutoff',min_table_elo:'Minimum table-average Elo',layout:'Map layout',auction:'Auction',faction_variant:'Faction balance',faction_variant_version:'Balance version',official_center_sectors:'Official center sectors',final_scoring:'Final scoring includes',technology:'Technology available',...Object.fromEntries(Array.from({length:6},(_,i)=>['round'+(i+1),'Round '+(i+1)+' scoring']))};
+const labels={skill:'Player skill',faction:'Faction',player_count:'Players',opponent:'Opponent faction',min_elo:'Custom player Elo cutoff',min_table_elo:'Minimum table-average Elo',layout:'Map layout',auction:'Auction',official_center_sectors:'Official center sectors',final_scoring:'Final scoring includes',technology:'Technology available',...Object.fromEntries(Array.from({length:6},(_,i)=>['round'+(i+1),'Round '+(i+1)+' scoring']))};
 const primary=['skill','faction','player_count','opponent','min_elo'];
-const setup=['round1','round2','round3','round4','round5','round6','final_scoring','technology','layout','auction','faction_variant','faction_variant_version','official_center_sectors','min_table_elo'];
+const setup=['round1','round2','round3','round4','round5','round6','final_scoring','technology','layout','auction','official_center_sectors','min_table_elo'];
 const saved={base:{},'lost-fleet':{}};
 let version=location.hash==='#lost-fleet'?'lost-fleet':'base',requestId=0;
 const el=id=>document.getElementById(id);

@@ -27,7 +27,15 @@ function cachedResponse(q){
  }
  return entry&&Date.now()-entry.time<RESPONSE_TTL?entry.data:null;
 }
-try{memories=JSON.parse(sessionStorage.getItem('gaia-cohort-filters')||'{}');}catch{}
+try{
+ const stored=JSON.parse(sessionStorage.getItem('gaia-cohort-filters')||'{}');
+ memories=stored&&typeof stored==='object'&&!Array.isArray(stored)?stored:{};
+ // Retired controls must not retain invisible filters in either game mode.
+ for(const saved of Object.values(memories))if(saved&&typeof saved==='object'){
+  delete saved.faction_variant;delete saved.faction_variant_version;
+ }
+ sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));
+}catch{}
 let rememberedMode;try{rememberedMode=sessionStorage.getItem('gaia-cohort-mode');}catch{}
 const explicitMode=new URLSearchParams(location.search).get('ruleset');const initialMode=['base','lost-fleet'].includes(explicitMode)?explicitMode:rememberedMode;if(['base','lost-fleet'].includes(initialMode))el('mode').value=initialMode;
 function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;memories[loadedMode]={...Object.fromEntries(new FormData(form)),plot:el('plot').value,frequency_view:el('frequency-view').value,lf_2p_4qic_mode:form.elements.lf_2p_4qic_mode.value,layout:form.elements.layout.disabled?(memories[loadedMode]?.layout||''):form.elements.layout.value};try{sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));}catch{}}
@@ -243,7 +251,7 @@ async function loadMode(){
  try{
   const response=await fetch('/cohort/api/catalog?ruleset='+mode,{signal});const catalog=await response.json();if(!response.ok)throw Error(catalog.error||'Catalog unavailable');if(current!==generation)return;
   form.reset();el('rounds').replaceChildren();el('techs').replaceChildren();
-  for(const key of ['faction','layout','auction','faction_variant','final_scoring','final_scoring2']){const select=form.elements[key];select.replaceChildren(new Option('All / any',''));for(const value of [...new Set((catalog[key.startsWith('final_scoring')?'final_scorings':key]||[]).filter(value=>typeof value==='string'&&value.trim()))].filter(value=>key!=='faction_variant'||value!=='more-balanced'))select.add(new Option(key.startsWith('final_scoring')?GaiaTiles.label('final',value):key==='faction'?GaiaTiles.faction(value):value,value));}
+  for(const key of ['faction','layout','auction','final_scoring','final_scoring2']){const select=form.elements[key];select.replaceChildren(new Option('All / any',''));for(const value of [...new Set((catalog[key.startsWith('final_scoring')?'final_scorings':key]||[]).filter(value=>typeof value==='string'&&value.trim()))])select.add(new Option(key.startsWith('final_scoring')?GaiaTiles.label('final',value):key==='faction'?GaiaTiles.faction(value):value,value));}
   for(let i=1;i<=6;i++){const label=document.createElement('label');label.textContent='Round '+i;const select=document.createElement('select');select.name='round'+i;select.add(new Option('Any',''));for(const value of catalog.round_scorings)select.add(new Option(GaiaTiles.label('round',value),value));label.append(select);el('rounds').append(label);}
   for(const slot of ['adv-terra','adv-nav','adv-int','adv-gaia','adv-eco','adv-sci',...(mode==='lost-fleet'?['adv-ext']:[])]){const label=document.createElement('label');label.textContent=GaiaTiles.position(slot);const select=document.createElement('select');select.name=slot;select.add(new Option('Any',''));for(const tile of catalog.advanced_technologies)select.add(new Option(GaiaTiles.label('advanced',tile),tile));label.append(select);el('techs').append(label);}
   for(const key of ['auction']){form.elements[key].disabled=mode==='base';form.elements[key].parentElement.hidden=mode==='base';}
