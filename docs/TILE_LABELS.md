@@ -67,4 +67,17 @@ local browser-helper checks (Node is not a deployment dependency):
 python -c "from gaia_stats.cohort import response; print(response(None,'/cohort/tile-labels.js',{})[0].decode())" | node tests/browser/tile_labels.cjs
 ```
 
-With Playwright and Chromium installed, `PYTHON=python node tests/browser/tile_labels_smoke.cjs` exercises eight chart modes, dropdown labels and unchanged filter IDs against real fixture-derived responses. It captures Plotly calls rather than testing image rendering.
+With Playwright and Chromium installed, `PYTHON=python node tests/browser/tile_labels_smoke.cjs` exercises nine chart modes, dropdown labels and unchanged filter IDs against real fixture-derived responses. It captures Plotly calls rather than testing image rendering.
+
+
+Point-source charts also retain source IDs as coordinates, with separate readable
+axis ticks and hover labels. For example, `research` and `tech_score` may both
+read “Research” without merging their distributions. Historical source axes use
+the union of categories across all rank traces; one rank lacking a source must
+not leave another rank’s label untranslated.
+
+`node --test tests/client/*.test.cjs` covers every registered ID and alias,
+glossary text, comparison wizard options, source-axis unions and matching-label
+identity. `python tests/browser/test_cohort_client.py -v` adds real Plotly checks
+for both game modes, all nine chart families, dropdowns, tables and accessible
+labels, plus separate same-label boxes and their actual hover text.

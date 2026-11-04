@@ -252,5 +252,75 @@ class CohortBrowserTests(unittest.TestCase):
         self.page.locator('#chart').screenshot(path='/tmp/gaia-integrated-treemap.png')
 
 
+    def assert_readable_surfaces(self):
+        # Native options, hidden details, chart SVG text and accessible labels all
+        # count as display text. Form values and raw Plotly keys intentionally do not.
+        text = self.page.evaluate("""() => [
+            document.body.innerText,
+            ...Array.from(document.querySelectorAll('option'), n => n.textContent),
+            ...Array.from(document.querySelectorAll('[aria-label],[title]'),
+                n => (n.getAttribute('aria-label') || '') + ' ' + (n.getAttribute('title') || ''))
+        ].join('\\n')""")
+        self.assertNotRegex(text, r"\[[^\]\n]+\]")
+        self.assertNotRegex(text, r"\b(?:advtech[\w-]*|tech[0-9]+|ship-tech-[\w-]+|adv-(?:terra|nav|int|gaia|eco|sci|ext)|tech-free[123])\b|_per_")
+
+    def test_every_cohort_view_has_clean_labels_and_raw_filter_values(self):
+        self.open()
+        for mode in ('base', 'lost-fleet'):
+            self.page.select_option('#mode', mode)
+            self.ready()
+            self.page.evaluate("for(const d of document.querySelectorAll('details'))d.open=true")
+            captions = self.page.locator('#techs > label').evaluate_all(
+                "nodes => nodes.map(n => n.firstChild.textContent)")
+            self.assertEqual(captions, ['Terra', 'Nav', 'Artificial Intelligence', 'Gaia', 'Econ', 'Sci'] +
+                (['Extra'] if mode == 'lost-fleet' else []))
+            self.assertEqual(self.page.locator('#techs select').evaluate_all('nodes => nodes.map(n => n.name)'),
+                ['adv-terra', 'adv-nav', 'adv-int', 'adv-gaia', 'adv-eco', 'adv-sci'] +
+                (['adv-ext'] if mode == 'lost-fleet' else []))
+            faction = self.page.locator('[name=faction] option').nth(1).get_attribute('value')
+            self.page.select_option('[name=faction]', faction)
+            self.ready()
+            for kind in PLOTS:
+                self.select_plot(kind)
+                self.page.wait_for_timeout(80)
+                self.assert_readable_surfaces()
+                for control in ('#scoring-view', '#frequency-view'):
+                    if self.page.locator(control).is_visible():
+                        choices = self.page.locator(control + ' option').evaluate_all('nodes => nodes.map(n => n.value)')
+                        for choice in choices:
+                            self.page.select_option(control, choice)
+                            self.page.wait_for_timeout(60)
+                            self.assert_readable_surfaces()
+                self.page.locator('#metrics th button').first.click()
+                self.assert_readable_surfaces()
+            self.page.set_viewport_size({'width': 390, 'height': 844})
+            self.assert_readable_surfaces()
+            self.page.set_viewport_size({'width': 1280, 'height': 1000})
+
+    def test_same_display_point_sources_remain_separate_in_real_plotly(self):
+        self.open()
+        self.select_plot('point-sources')
+        self.page.evaluate("""() => {
+            const p=result.plots['point-sources'], c=p.rank_cells.find(c=>c.samples);
+            p.cells=p.rank_cells=['research','tech_score'].map((label,i)=>({...c,label,q1:5+i,median:10+i,q3:15+i,lower:1+i,upper:20+i}));
+            draw();
+        }""")
+        for view in ('relative', 'absolute'):
+            self.page.select_option('#scoring-view', view)
+            self.page.wait_for_timeout(100)
+            self.assertEqual(self.page.locator('#chart').evaluate("e=>e._fullLayout.xaxis._categories"),
+                ['research', 'tech_score'])
+            self.assertEqual(self.page.locator('#chart .xtick text').all_text_contents(), ['Research', 'Research'])
+            self.assertEqual(self.page.locator('#chart .boxlayer path.box').count(), 2)
+            box = self.page.locator('#chart .boxlayer path.box').first.bounding_box()
+            self.page.mouse.move(box['x'] + box['width']/2, box['y'] + box['height']/2)
+            self.page.wait_for_timeout(100)
+            hover = self.page.locator('#chart .hoverlayer').text_content()
+            self.assertIn('Research', hover)
+            self.assertNotIn('tech_score', hover)
+            self.assertNotIn('research', hover)
+            self.assert_readable_surfaces()
+
+
 if __name__ == '__main__':
     unittest.main()

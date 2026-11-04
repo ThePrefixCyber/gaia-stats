@@ -477,3 +477,27 @@ test('native invalid input, Apply click and requestSubmit cancel pending respons
   }finally{h.close();}
  }
 });
+
+test('point-source shorthand never merges distinct raw categories', async()=>{
+ const h=await harness();
+ try{
+  await h.select('plot','point-sources');
+  const plot=h.w.testClient.getResult().plots['point-sources'];
+  const source=plot.rank_cells.find(c=>c.samples);
+  plot.rank_cells=['research','tech_score'].map((label,i)=>({...source,label,median:10+i,q1:5+i,q3:15+i}));
+  plot.cells=plot.rank_cells;
+  await h.select('scoring-view','relative');
+  let trace=h.draws.at(-1)[0],axis=h.get('chart').layout.xaxis;
+  assert.deepEqual(Array.from(trace.x),['research','tech_score']);
+  assert.deepEqual(Array.from(axis.tickvals),['research','tech_score']);
+  assert.deepEqual(Array.from(axis.ticktext),['Research','Research']);
+  assert.ok(trace.hovertext.every(text=>text.startsWith('Research<br>')));
+  assert.doesNotMatch(trace.hovertemplate,/%\{x\}/);
+  assert.equal(h.get('metrics').querySelectorAll('tbody tr').length,2);
+  await h.select('scoring-view','absolute');
+  const traces=h.draws.at(-1);
+  assert.deepEqual(traces.map(t=>Array.from(t.x)[0]),['research','tech_score']);
+  assert.deepEqual(traces.map(t=>t.median[0]),[10,11]);
+  assert.ok(traces.every(t=>t.name==='Research'&&!t.hovertemplate.includes('%{x}')));
+ }finally{h.close();}
+});

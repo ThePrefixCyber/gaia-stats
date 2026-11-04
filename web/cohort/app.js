@@ -115,9 +115,12 @@ if(kind.startsWith('basic-tech-')){({traces,layout}=GaiaBasicTech.build(kind,cel
 else if(kind==='point-sources'){
  if(relative){
   const groups=[...new Set(cells.map(c=>`${c.player_count}p · rank ${c.rank}`))];
-  traces=groups.map(group=>{const part=cells.filter(c=>`${c.player_count}p · rank ${c.rank}`===group&&c.samples);return {type:'box',name:group,x:part.map(c=>GaiaTiles.metric(kind,c.label)),q1:part.map(c=>c.q1),median:part.map(c=>c.median),q3:part.map(c=>c.q3),lowerfence:part.map(c=>c.lower),upperfence:part.map(c=>c.upper),hovertext:part.map(c=>`n=${c.samples}; signed % of final net score`)};});
+  traces=groups.map(group=>{const part=cells.filter(c=>`${c.player_count}p · rank ${c.rank}`===group&&c.samples);return {type:'box',name:group,x:part.map(c=>c.label),q1:part.map(c=>c.q1),median:part.map(c=>c.median),q3:part.map(c=>c.q3),lowerfence:part.map(c=>c.lower),upperfence:part.map(c=>c.upper),hovertext:part.map(c=>`${GaiaTiles.metric(kind,c.label)}<br>n=${c.samples}; signed % of final net score`),hovertemplate:'%{hovertext}<br>%{y}<extra>%{fullData.name}</extra>'};});
   layout.boxmode='group';layout.yaxis.title='Signed share of final net score (%)';
- }else{traces=cells.map(c=>({type:'box',name:GaiaTiles.metric(kind,c.label),q1:[c.q1],median:[c.median],q3:[c.q3],lowerfence:[c.lower],upperfence:[c.upper],hovertext:'n='+c.samples}));layout.yaxis.title='VP contribution (signed)';}
+ }else{traces=cells.map(c=>({type:'box',name:GaiaTiles.metric(kind,c.label),x:[c.label],q1:[c.q1],median:[c.median],q3:[c.q3],lowerfence:[c.lower],upperfence:[c.upper],hovertext:GaiaTiles.metric(kind,c.label)+'<br>n='+c.samples,hovertemplate:'%{hovertext}<br>%{y}<extra></extra>'}));layout.yaxis.title='VP contribution (signed)';}
+ // A display label is never a category key: different sources can share shorthand.
+ const sources=[...new Set(cells.map(c=>c.label))];
+ layout.xaxis={...layout.xaxis,tickmode:'array',tickvals:sources,ticktext:sources.map(source=>GaiaTiles.metric(kind,source))};
  el('note').textContent+=' Boxes: quartiles, with min/max whiskers.';
 }
 else if(kind==='final-scoring'){
