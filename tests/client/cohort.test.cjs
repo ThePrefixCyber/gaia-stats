@@ -23,10 +23,11 @@ const html = readFileSync('web/cohort/index.html', 'utf8');
 const script = readFileSync('web/cohort/app.js', 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function harness({plotly=true, controlled=false, controlledCatalog=false, memories={}}={}) {
-  const dom = new JSDOM(html, {url:'http://localhost/', runScripts:'outside-only'});
+async function harness({plotly=true, controlled=false, controlledCatalog=false, memories={}, url='http://localhost/?ruleset=base', rememberedMode=null}={}) {
+  const dom = new JSDOM(html, {url, runScripts:'outside-only'});
   const w=dom.window, requests=[], pending=[], catalogs=[], draws=[], purges=[];
   w.sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));
+  if(rememberedMode!==null)w.sessionStorage.setItem('gaia-cohort-mode',rememberedMode);
   let failures=false;
   const plots = {
     react(target,traces,layout){target.data=traces;target.layout=layout;draws.push(traces);return Promise.resolve();},
@@ -51,6 +52,7 @@ async function harness({plotly=true, controlled=false, controlledCatalog=false, 
   };
   w.eval(readFileSync('web/cohort/tile-labels.js','utf8').replace('__TILE_REGISTRY__',readFileSync('web/cohort/tile-labels.json','utf8')));
   w.eval(readFileSync('web/cohort/tables.js','utf8'));
+  w.eval(readFileSync('web/cohort/basic-tech.js','utf8'));
   w.eval(script+'\nwindow.testClient={getResult:()=>result,openingTree,getSize:()=>responses.size,expire:()=>{for(const entry of responses.values())entry.time-=RESPONSE_TTL+1;}};');
   await tick();await tick();
   const get=id=>w.document.getElementById(id);
@@ -152,15 +154,15 @@ test('Plotly and API errors retain exact fallback and allow retry', async()=>{
   }finally{h.close();}
 });
 
-test('all eight views render with six requests; expired responses refetch', async()=>{
+test('all nine views render with eight requests; expired responses refetch', async()=>{
   const h=await harness();
   try{
     for(const kind of Object.keys(fixtures.base.stats[''].plots))await h.select('plot',kind);
-    assert.equal(h.requests.length,6);
+    assert.equal(h.requests.length,8);
     assert.equal(h.draws.at(-1)[0].type,'box');
     h.w.testClient.expire();
     await h.select('plot','advanced-tech-frequency');
-    assert.equal(h.requests.length,7);
+    assert.equal(h.requests.length,9);
     assert.ok(h.w.testClient.getSize()<=8);
   }finally{h.close();}
 });
@@ -238,7 +240,7 @@ test('round comparison labels expand tile IDs without misreading the player-coun
       const text=h.w.GaiaTiles.metric('round-scoring',`${players}p: Round 1 / score1`);
       assert.match(text,new RegExp(`${players} players: Round 1`));
       assert.doesNotMatch(text,/Unmapped/);
-      assert.equal(text.split(' / ')[1],h.w.GaiaTiles.label('round','score1').replace(/ \[[^\]]+\]$/, ''));
+      assert.equal(text.slice(text.indexOf(' / ')+3),h.w.GaiaTiles.label('round','score1').replace(/ \[[^\]]+\]$/, ''));
       assert.doesNotMatch(text,/score1/);
     }
     await h.select('plot','round-scoring');await h.select('scoring-view','absolute');
@@ -316,4 +318,122 @@ test('integrated scoring and frequency controls retain independent modes across 
     assert.equal(trace.branchvalues,'total');
     assert.ok(trace.marker.colorscale.some(([position,color])=>color==='#ff3b30'));
   }finally{h.close();}
+});
+ test('mode labels, new visitor default, remembered choice and explicit links',async()=>{
+ for(const [url,rememberedMode,expected] of [['http://localhost/',null,'lost-fleet'],['http://localhost/','base','base'],['http://localhost/?ruleset=lost-fleet','base','lost-fleet'],['http://localhost/?ruleset=base','lost-fleet','base'],['http://localhost/','invalid','lost-fleet']]){
+ const h=await harness({url,rememberedMode});try{assert.equal(h.get('mode').value,expected);assert.deepEqual([...h.get('mode').options].map(o=>o.text),['Lost Fleet • Live','Base Game • Static']);await h.select('mode',expected==='base'?'lost-fleet':'base');assert.equal(h.w.sessionStorage.getItem('gaia-cohort-mode'),h.get('mode').value);}finally{h.close();}
+ }
+ });
+
+ test('more-balanced is never offered or restored; 4-QIC selection remains independent',async()=>{
+ const old=fixtures['lost-fleet'].catalog.faction_variant;fixtures['lost-fleet'].catalog.faction_variant=[...old,'more-balanced'];
+ const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{player_count:'2',faction_variant:'more-balanced',lf_2p_4qic_mode:'variant-only'}}});
+ try{const fields=h.get('filters').elements;assert.ok(![...fields.faction_variant.options].some(o=>o.value==='more-balanced'));assert.equal(fields.faction_variant.value,'');assert.equal(fields.lf_2p_4qic_mode.value,'variant-only');assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');assert.notEqual(h.requests.at(-1).faction_variant,'more-balanced');}
+ finally{h.close();fixtures['lost-fleet'].catalog.faction_variant=old;}
+ });
+
+test('player count defaults to 4; 4-QIC only submits for 2/Any and remembers hidden choices',async()=>{
+ const h=await harness({url:'http://localhost/'});try{
+  const fields=h.get('filters').elements, player=fields.player_count,variant=fields.lf_2p_4qic_mode;
+  const choose=async(value)=>{player.value=value;player.dispatchEvent(new h.w.Event('change'));await h.apply();};
+  assert.deepEqual([...player.options].map(o=>[o.value,o.text]),[['4','4'],['3','3'],['2','2'],['','Any']]);
+  assert.equal(player.value,'4');assert.equal(h.requests.at(-1).player_count,'4');
+  assert.equal(variant.disabled,true);assert.equal(variant.parentElement.hidden,true);assert.ok(!('lf_2p_4qic_mode' in h.requests.at(-1)));
+  await choose('2');assert.equal(variant.disabled,false);assert.equal(variant.parentElement.hidden,false);assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'standard-only');
+  variant.value='variant-only';await h.apply();assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');
+  await choose('3');assert.equal(variant.disabled,true);assert.equal(variant.parentElement.hidden,true);assert.ok(!('lf_2p_4qic_mode' in h.requests.at(-1)));
+  assert.equal(JSON.parse(h.w.sessionStorage.getItem('gaia-cohort-filters'))['lost-fleet'].lf_2p_4qic_mode,'variant-only');
+  await choose('');assert.equal(variant.disabled,false);assert.equal(variant.parentElement.hidden,false);assert.equal(variant.value,'variant-only');assert.ok(!('player_count' in h.requests.at(-1)));assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');
+  await h.select('mode','base');assert.equal(player.value,'4');assert.equal(variant.disabled,true);assert.equal(variant.parentElement.hidden,true);assert.ok(!('lf_2p_4qic_mode' in h.requests.at(-1)));
+  await h.select('mode','lost-fleet');assert.equal(player.value,'');assert.equal(variant.value,'variant-only');assert.equal(variant.disabled,false);assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');
+ }finally{h.close();}
+});
+
+test('saved player count restores visibility; hidden variant requests cannot win races or reuse old cache',async()=>{
+ for(const count of ['4','3','2','']){
+  const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{player_count:count,lf_2p_4qic_mode:'include-both'}}});
+  try{const field=h.get('filters').elements.lf_2p_4qic_mode;assert.equal(field.disabled,['4','3'].includes(count));assert.equal(field.parentElement.hidden,field.disabled);assert.equal(h.requests.at(-1).lf_2p_4qic_mode,field.disabled?undefined:'include-both');}finally{h.close();}
+ }
+ const h=await harness({url:'http://localhost/',controlled:true,memories:{'lost-fleet':{player_count:'2',lf_2p_4qic_mode:'variant-only'}}});
+ try{
+  const stale=h.pending.shift();const player=h.get('filters').elements.player_count;
+  player.value='4';player.dispatchEvent(new h.w.Event('change'));await h.apply();
+  assert.equal(stale.signal.aborted,true);assert.equal(h.requests.at(-1).player_count,'4');assert.ok(!('lf_2p_4qic_mode' in h.requests.at(-1)));
+  await h.flush();stale.resolve();await tick();await tick();assert.equal(h.w.testClient.getResult().filters.player_count,'4');
+  const before=h.requests.length;await h.select('plot','advanced-tech-score');assert.equal(h.requests.length,before);
+  player.value='2';player.dispatchEvent(new h.w.Event('change'));await h.apply();assert.equal(h.requests.length,before+1);assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');await h.flush();
+ }finally{h.close();}
+});
+
+test('basic mode selection keeps scoring, advanced frequency and global comparisons intact',async()=>{
+ const h=await harness();try{
+  const comparison=h.get('comparison').firstChild;
+  await h.select('frequency-view','position');
+  for(const kind of ['basic-tech-frequency','basic-tech-score','basic-tech-setup-score']){
+   await h.select('plot',kind);assert.equal(h.get('frequency-view-label').hidden,true);assert.equal(h.get('scoring-view-control').hidden,true);assert.equal(h.get('comparison').firstChild,comparison);assert.ok(h.draws.at(-1).length);
+  }
+  await h.select('plot','advanced-tech-frequency');assert.equal(h.get('frequency-view-label').hidden,false);assert.equal(h.get('frequency-view').value,'position');
+  await h.select('plot','point-sources');assert.ok(h.draws.at(-1).every(t=>t.name.includes('rank')));
+  assert.equal(h.w.document.querySelector('#filters [name=faction]'),null);assert.equal(h.w.document.querySelector('#chart-panel [name=faction]').form,h.get('filters'));
+ }finally{h.close();}
+});
+
+test('layout uses distinct known catalog choices and never filters while hidden',async()=>{
+ const original=fixtures['lost-fleet'].catalog.layout;
+ try{
+  for(const [values,visible] of [[[],false],[[null,'','unknown'],false],[['standard','standard','unknown'],false],[['standard','X'],true]]){
+   fixtures['lost-fleet'].catalog.layout=values;
+   const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{layout:'standard'}}});
+   try{
+    const field=h.get('filters').elements.layout;
+    assert.equal(field.disabled,!visible);assert.equal(field.parentElement.hidden,!visible);
+    assert.equal(h.requests.at(-1).layout,visible?'standard':undefined);
+    assert.equal(JSON.parse(h.w.sessionStorage.getItem('gaia-cohort-filters'))['lost-fleet'].layout,'standard');
+    assert.equal(new Set([...field.options].map(o=>o.value)).size,field.options.length);
+   }finally{h.close();}
+  }
+  fixtures['lost-fleet'].catalog.layout=['standard'];
+  const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{layout:'X'}}});
+  try{
+   assert.equal(h.get('filters').elements.layout.value,'');assert.ok(!('layout' in h.requests.at(-1)));
+   await h.select('mode','base');fixtures['lost-fleet'].catalog.layout=['standard','X'];await h.select('mode','lost-fleet');
+   assert.equal(h.get('filters').elements.layout.disabled,false);assert.equal(h.get('filters').elements.layout.value,'X');assert.equal(h.requests.at(-1).layout,'X');
+   await h.select('mode','base');fixtures['lost-fleet'].catalog.layout=['standard'];await h.select('mode','lost-fleet');
+   assert.equal(h.get('filters').elements.layout.disabled,true);assert.ok(!('layout' in h.requests.at(-1)));assert.equal(JSON.parse(h.w.sessionStorage.getItem('gaia-cohort-filters'))['lost-fleet'].layout,'X');
+  }finally{h.close();}
+ }finally{fixtures['lost-fleet'].catalog.layout=original;}
+});
+
+test('faction names are display-only title case across both modes',async()=>{
+ const original=fixtures['lost-fleet'].catalog.faction;
+ fixtures['lost-fleet'].catalog.faction=[...original,'space-giants'];
+ const h=await harness({url:'http://localhost/'});
+ try{
+  const field=h.get('filters').elements.faction;
+  assert.equal([...field.options].find(o=>o.value==='space-giants').text,'Space Giants');
+  field.value='space-giants';field.dispatchEvent(new h.w.Event('change'));await tick();await tick();
+  assert.equal(h.requests.at(-1).faction,'space-giants');assert.match(h.get('csv').href,/faction=space-giants/);
+  await h.select('mode','base');
+  for(const option of field.options)if(option.value)assert.equal(option.text,h.w.GaiaTiles.faction(option.value));
+  await h.select('mode','lost-fleet');assert.equal(field.value,'space-giants');assert.equal(field.selectedOptions[0].text,'Space Giants');
+  assert.match(readFileSync('web/classic/index.html','utf8'),/new Option\(GaiaTiles.faction\(faction\),faction\)/);
+  assert.match(readFileSync('web/index.html','utf8'),/\['faction','opponent'\]\.includes\(key\)\?GaiaTiles.faction\(value\)/);
+ }finally{h.close();fixtures['lost-fleet'].catalog.faction=original;}
+});
+
+test('Elo text input allows only empty or positive integers and never submits invalid values',async()=>{
+ const h=await harness();try{
+  const field=h.get('filters').elements.min_elo;
+  assert.equal(field.type,'text');assert.equal(field.getAttribute('inputmode'),'numeric');assert.match(field.getAttribute('aria-describedby'),/elo-error/);
+  const baseline=h.requests.length;
+  for(const invalid of ['0','00','-1','1.5','1e3','abc',' 200','200 ']){
+   field.value=invalid;field.dispatchEvent(new h.w.Event('input'));await h.apply();
+   assert.equal(h.requests.length,baseline,invalid);assert.equal(field.checkValidity(),false);assert.equal(field.getAttribute('aria-invalid'),'true');assert.equal(h.get('elo-error').hidden,false);
+  }
+  // Both a chart change and a graph-faction change must also reject invalid text.
+  await h.select('plot','point-sources');assert.equal(h.requests.length,baseline);
+  field.value='200';field.dispatchEvent(new h.w.Event('input'));await h.apply();assert.equal(h.requests.at(-1).min_elo,'200');assert.equal(field.checkValidity(),true);assert.equal(field.getAttribute('aria-invalid'),'false');assert.equal(h.get('elo-error').hidden,true);
+  field.value='';field.dispatchEvent(new h.w.Event('input'));await h.apply();assert.ok(!('min_elo' in h.requests.at(-1)));assert.equal(field.checkValidity(),true);
+  field.value='001';field.dispatchEvent(new h.w.Event('input'));assert.equal(field.checkValidity(),true);
+ }finally{h.close();}
 });

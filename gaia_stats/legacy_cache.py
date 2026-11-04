@@ -158,6 +158,11 @@ def cache_response(cache_root, path, query):
             raise ValueError('Choose a supported player count, base faction and original plot')
         filename = f'{players}-{faction}-{kind}.html'
         body = (base / 'plots' / filename).read_bytes()
+        # Relabel the presentation at serve time; cached statistical artifacts stay immutable.
+        from .cohort import response as cohort_response
+        labels, _ = cohort_response(None, '/cohort/tile-labels.js', {})
+        script = b'<script>' + labels + b"\nwindow.addEventListener('load',()=>GaiaTiles.legacy(" + json.dumps(kind).encode() + b"));</script>"
+        body = body.replace(b'</body>', script + b'</body>')
         download = None
         if query.get('download') == '1':
             javascript = (base / 'plotly.min.js').read_bytes()

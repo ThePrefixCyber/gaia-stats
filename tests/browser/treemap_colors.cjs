@@ -12,14 +12,14 @@ function harness(){
   if(!elements.has(id))elements.set(id,{value:'',textContent:'',style:{},dataset:{},add(){},addEventListener(){},replaceChildren(){},setAttribute(){},removeAttribute(){}});
   return elements.get(id);
  };
- const form={};
+ const form={elements:{faction:{},player_count:{},min_elo:{}}};
  const draws=[];
  const Plotly={purge(){},newPlot(target,traces,layout){draws.push({traces,layout});},react(target,traces,layout){draws.push({traces,layout});return Promise.resolve();}};
  const context={
-  document:{querySelector:()=>form,getElementById:element,createElement:()=>({}),head:{append(){}}},
+  document:{querySelector:()=>form,getElementById:element,createElement:()=>({}),head:{append(){}},addEventListener(){}},
   sessionStorage:{getItem:()=>null},location:{search:''},URLSearchParams,
   Option:function(text,value){this.text=text;this.value=value;},
-  GaiaTiles:{metric:(_,value)=>value,label:(_,value)=>value},Plotly,window:{Plotly},
+  GaiaTiles:{metric:(_,value)=>value,label:(_,value)=>value},Plotly,window:{Plotly,innerWidth:1600,innerHeight:1000,addEventListener(){}},
  };
  vm.createContext(context);
  // Only suppress the initial network request; all tested draw code is unchanged.

@@ -19,7 +19,7 @@ print(json.dumps({'catalog':json.loads(response(data,'/cohort/api/catalog',{'rul
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test('faction changes only the graph cohort, keeping sorted all-faction comparisons and separated counts', async()=>{
-  const dom=new JSDOM(readFileSync('web/cohort/index.html','utf8'), {url:'http://localhost/',runScripts:'outside-only'});
+  const dom=new JSDOM(readFileSync('web/cohort/index.html','utf8'), {url:'http://localhost/?ruleset=base',runScripts:'outside-only'});
   const w=dom.window, get=id=>w.document.getElementById(id);
   const apply=async()=>{get('filters').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();await tick();};
   const factions=id=>[...get(id).querySelectorAll('tbody tr')].map(row=>row.cells[0].textContent);

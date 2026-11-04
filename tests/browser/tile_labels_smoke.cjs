@@ -16,6 +16,7 @@ print(json.dumps({'catalog':json.loads(response(d,'/cohort/api/catalog',{})[0]),
  if(url.pathname==='/cohort/tile-labels.js'){body=asset;contentType='application/javascript';}
  else if(url.pathname==='/cohort/tables.js'){body=fs.readFileSync('web/cohort/tables.js','utf8');contentType='application/javascript';}
  else if(url.pathname==='/cohort/styles.css'){body=fs.readFileSync('web/cohort/styles.css','utf8');contentType='text/css';}
+ else if(url.pathname==='/cohort/basic-tech.js'){body=fs.readFileSync('web/cohort/basic-tech.js','utf8');contentType='application/javascript';}
  else if(url.pathname==='/cohort/app.js'){body=fs.readFileSync('web/cohort/app.js','utf8');contentType='application/javascript';}
  else if(url.pathname.includes('plotly')){body='window.Plotly={purge(){},react(el,traces,layout){window.lastPlot={traces,layout};el.data=traces;return Promise.resolve();}}';contentType='application/javascript';}
  else if(url.pathname.endsWith('/catalog')){body=JSON.stringify(data.catalog);contentType='application/json';}
@@ -23,8 +24,8 @@ print(json.dumps({'catalog':json.loads(response(d,'/cohort/api/catalog',{})[0]),
  else body=fs.readFileSync('web/cohort/index.html','utf8');
  await route.fulfill({body,contentType});});
  await page.goto('http://gaia.test/?ruleset=lost-fleet');await page.waitForFunction(()=>window.lastPlot,{},{timeout:5000}).catch(async e=>{console.log(await page.locator('#status').textContent(),errors);throw e});
- const option=await page.locator('select[name="adv-terra"] option').nth(1).textContent();assert.match(option,/\[advtech/);
+ const option=await page.locator('select[name="adv-terra"] option').nth(1).textContent();assert.ok(option.length>0);assert.doesNotMatch(option,/advtech|\[/);
  const value=await page.locator('select[name="adv-terra"] option').nth(1).getAttribute('value');await page.getByText('Match scoring setup',{exact:true}).click();await page.selectOption('select[name="adv-terra"]',value);await page.locator('#filters').evaluate(f=>f.requestSubmit());await page.waitForTimeout(100);assert.ok(queries.at(-1).includes('adv-terra='+value));
- for(const kind of ['advanced-tech-frequency','advanced-tech-score','basic-tech-frequency','basic-tech-score','round-scoring','final-scoring','point-sources','round-one-structures']){await page.selectOption('#plot',kind);await page.waitForTimeout(80);const text=await page.locator('#metrics').textContent();if(kind.includes('tech-'))assert.match(text,/\[(advtech|tech|ship-tech)/);if(kind==='round-scoring'){const p=await page.evaluate(()=>window.lastPlot);assert.equal(p.layout.xaxis.ticktext[0],'Round 1');assert.match(p.layout.yaxis.ticktext[0],/This round:/);}}
- assert.deepEqual(errors,[]);await browser.close();console.log('Browser: eight chart modes, readable selectors/ticks/tables, raw filter values, no page errors passed');
+ for(const kind of ['advanced-tech-frequency','advanced-tech-score','basic-tech-frequency','basic-tech-score','basic-tech-setup-score','round-scoring','final-scoring','point-sources','round-one-structures']){await page.selectOption('#plot',kind);await page.waitForTimeout(80);const text=await page.locator('#metrics').textContent();if(kind.includes('tech-'))assert.doesNotMatch(text,/advtech\d|ship-tech-|tech\d/);if(kind==='round-scoring'){const p=await page.evaluate(()=>window.lastPlot);assert.equal(p.layout.xaxis.ticktext[0],'Round 1');assert.match(p.layout.yaxis.ticktext[0],/vp /);}}
+ assert.deepEqual(errors,[]);await browser.close();console.log('Browser: nine chart modes, readable selectors/ticks/tables, raw filter values, no page errors passed');
 })().catch(e=>{console.error(e);process.exit(1)});

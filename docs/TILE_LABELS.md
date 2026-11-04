@@ -1,19 +1,19 @@
 # Tile descriptions
 
-The live cohort UI labels technologies, round scoring, final objectives and
-booster VP sources with their effects and timing. The exact BGS identifier stays
-in brackets. Select values, statistics, cached data, CSVs, archive identities and
-backfill checkpoints are unchanged. A shared key includes Tim's historical
-aliases. The historical comparison wizard and results also use these labels.
-Previously generated historical plot files and direct downloads retain their
-original labels; the plot wrapper supplies the matching key rather than rewriting
-those reproducible artifacts.
+The cohort UI uses concise effect shorthands, with full descriptions in the
+collapsible Shorthand key. Technical identifiers and historical aliases remain
+internal keys and CSV values, never display suffixes. Distinct tiles with the
+same shorthand retain separate coordinates and filter values. Unknown values
+are shown as unknown rather than assigned an invented effect.
 
 Definitions live in `web/cohort/tile-labels.json`; presentation code lives beside
-it. Unknown tiles are explicitly marked unmapped. Technology positions such as
-`adv-terra` and `tech-terra` are **not** tile identities. Tech plots already pair
-actual tile identity with its position; pooled VP sources at a position keep
-that distinction instead of claiming one fixed effect.
+it. Position labels identify source locations, not the tile occupying them.
+Gaia and Artificial Intelligence are displayed without a “position” suffix.
+The cohort charts, selectors, exact tables, historical comparison pages and
+Opening Explorer use this shared mapping. Cached historical plots are relabelled
+when served (including standalone downloads), without modifying cached data,
+coordinates or statistical calculations. Source VP categories get readable
+names; unsupported source categories remain “Other VP”.
 
 ## Evidence
 
@@ -25,7 +25,12 @@ Reviewed against BGS source at commit
 - `engine/src/tiles/boosters.ts`: incomes, pass scoring and special actions.
 - `engine/src/tiles/scoring.ts`, `engine/src/enums.ts`, and the final-scoring
   implementation in `engine/src/player.ts`: round tiles and final objectives.
-- `engine/src/actions.ts`: numbered QIC actions in VP source data.
+- `engine/src/actions.ts`: numbered power/QIC actions.
+- `engine/src/tiles/federations.ts`, `spaceship-federations.ts`, `artifacts.ts`,
+  and `engine/src/factions.ts`: Opening Explorer move tokens, including
+  federation rewards, artifacts and Tinkeroids special-action tiles.
+  Whole-token substitutions preserve resource quantities, coordinates and move
+  order; ship actions retain their Power/Credit/QIC action type.
 - The committed `parse_jsons.ipynb`: Tim's aliases, retained as identifiers.
 
 Lost Fleet cross-check: [publisher rulebook](https://capstone-games.com/cdn/shop/files/GP_Exp_Rule_EN_V1_Web.pdf?v=6134275372584409409).

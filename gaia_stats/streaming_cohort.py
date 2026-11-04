@@ -24,7 +24,7 @@ class Cell:
         for key, value in item.items():
             if key == 'rank_counts':
                 self.value.setdefault(key, Counter()).update(value)
-            elif key in ('samples', 'games', 'available', 'score_samples') or key.endswith('_n'):
+            elif key in ('samples', 'games', 'available', 'score_samples', 'setup_samples', 'unknown_ownership') or key.endswith('_n'):
                 self.value[key] = self.value.get(key, 0) + value
             elif key.startswith('mean_') or key == 'win_share' or (setup and key not in ('faction', 'samples') and not key.endswith('_n')):
                 weight_key = key + '_n' if setup or key + '_n' in item else ('score_samples' if key == 'mean_score' and 'score_samples' in item else 'samples')

@@ -1,27 +1,14 @@
-// Run: python -c "from gaia_stats.cohort import response; print(response(None,'/cohort/tile-labels.js',{})[0].decode())" | node tests/browser/tile_labels.cjs
-const assert=require('node:assert/strict'), vm=require('node:vm'), fs=require('node:fs');
-const context={window:{}}; vm.createContext(context);vm.runInContext(fs.readFileSync(0,'utf8'),context);
+// Supply generated tile-labels.js on stdin; no browser dependency.
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(0,'utf8'),context);
 const T=context.window.GaiaTiles;
-assert.match(T.label('advanced','advtech4'),/^Immediate: 2 VP per current mine \[advtech4\]$/);
-assert.match(T.label('advanced','advtech14'),/^Each mine built: 3 VP/);
-assert.match(T.label('advanced','advtech-deep'),/Immediate: 4 VP/);
-assert.match(T.label('advanced','advtech-deeppass'),/Pass: 2 VP/);
-assert.match(T.label('basic','k_per_terra'),/planet type/);
-assert.match(T.label('advanced','1vp_per_terra_pass'),/planet type/);
-assert.match(T.label('advanced','new-tile'),/^Unmapped advanced tile \[new-tile\]$/);
-assert.match(T.metric('advanced-tech-score','advtech1 / adv-terra'),/Pass: 3 VP.*Terraforming position \[adv-terra\]/);
-assert.match(T.metric('point-sources','adv-terra'),/^VP from Terraforming position/);
-assert.doesNotMatch(T.metric('point-sources','adv-terra'),/Pass|Immediate/);
-assert.equal(T.metric('point-sources','gaia'),'gaia'); // raw source != final tile
-assert.match(T.metric('round-scoring','Round 1 / score7'),/^Round 1 \/ This round: 5 VP/);
-assert.match(T.metric('final-scoring','gaia / structure'),/Most colonized Gaia planets.*Most structures/);
-assert.match(T.metric('point-sources','booster6'),/pass: 1 VP per mine/);
-assert.match(T.metric('point-sources','qic2'),/rescore one owned federation token/);
-assert.match(T.metric('basic-tech-frequency','ship-tech-resource / rebellion'),/Immediate: gain 1 ore and 3 knowledge.*\[rebellion\]/);
-assert.notEqual(T.label('round','score7'),T.label('round','score10'));
-for (const i of [1,2,3]) {
-  assert.equal(T.position('free'+i),`Free position ${i} [free${i}]`);
-  assert.equal(T.position('tech-free'+i),`Free position ${i} [tech-free${i}]`);
-}
-assert.match(T.label('final','satellite'),/including Ivits space stations/);
-console.log('25 presentation assertions passed');
+for(const [id,text] of Object.entries({tech9:'4pw Action',tech8:'4c Income',tech4:'7vp',tech3:'4pip PI/AC',tech1:'1o1q','ship-tech-resource':'1o3k','ship-tech-range':'+1 Range','ship-tech-terraform':'2tf Mine'}))assert.equal(T.label('basic',id),text);
+assert.equal(T.label('basic','1q_1o'),T.label('basic','tech1'));
+assert.equal(T.label('round','score7'),T.label('round','score10')); // Shared shorthand, distinct coordinates.
+assert.match(T.label('advanced','advtech4'),/Now/);assert.doesNotMatch(T.label('advanced','advtech14'),/Now/);
+assert.equal(T.label('basic','unknown'), 'Unknown tile');assert.equal(T.position('tech-free1'),'Free 1');
+assert.equal(T.metric('point-sources','round1'),'Round 1');assert.equal(T.metric('point-sources','tfmars'),'TF Mars');
+assert.equal(T.metric('point-sources','tech-free1'),'Tech Free 1');assert.equal(T.metric('point-sources','gaia'),'Gaia Research');
+const forbidden=/advtech\d|tech\d|ship-tech-|tech-free|\[|_per_/;
+for(const value of [T.metric('advanced-tech-score','advtech1 / adv-terra'),T.metric('basic-tech-score','ship-tech-resource / tfmars'),T.metric('round-scoring','Round 1 / score7'),T.metric('final-scoring','gaia / structure'),T.move('terrans tech free3. up nav'),T.move('terrans tech ship-tech-resource')])assert.doesNotMatch(value,forbidden);
+console.log('24 shorthand and identifier-separation assertions passed');

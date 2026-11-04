@@ -21,20 +21,23 @@ Elo, layout, auction and faction-variant filters, plus round/final scoring and
 available advanced-tech selections. Options depend on the selected dataset;
 missing historical metadata remains unknown. Missing Elo is included without a
 cutoff and excluded when a numeric minimum is set. Mode selections are remembered
-within the browser session.
+within the browser session. Player counts are 4 (default), 3, 2 and Any. The LF
+4-QIC control is shown only for 2/Any, and a Layout control is shown only when
+multiple known layouts are available. Hidden controls do not add request filters;
+their previous selections are retained for when they apply again.
 
 The significant two-player LF **4-QIC → technology** variant has three choices:
 **standard only** (default), **both**, and **variant only**. Classification uses
 explicit BGS option metadata, not faction names. The default excludes that
 variant; it does not remove ordinary three- and four-player LF games.
 
-All eight chart views and the selected player-game CSV honor the faction filter.
+All nine chart views and the selected player-game CSV honor the faction filter.
 The four always-visible faction, round/final VP and advanced-tech comparison
 tables include all factions, retaining every other selected filter and scoring
 setup. Selecting a faction with no graph observations can still leave valid
 comparison rows for other factions. Chart views include:
 
-- Basic and advanced technology acquisition frequencies and mean-score plots.
+- Three basic-technology views: acquisition by setup location, acquirers’ mean score by source location, and all setup observations’ mean score. Advanced technology frequency and mean-score plots remain available. See [basic-tech methods](docs/BASIC_TECH_MODES.md).
 - Round-one structure treemap.
 - Round and final scoring heatmaps, alongside shared-win heatmaps.
 - Signed VP-source distributions with exact quartiles and min/max whiskers.

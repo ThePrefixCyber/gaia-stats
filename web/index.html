@@ -20,7 +20,7 @@
 <div class="table-wrap"><table><thead><tr><th>Faction / setup</th><th>Build sequence</th><th>Samples</th><th>Mean VP</th><th>Win share</th><th>Mean Elo</th></tr></thead><tbody id="groups"></tbody></table></div>
 <details><summary>Inspect matching games and full opening moves</summary><div id="games"></div></details>
 </section></main>
-<script>
+<script src="/cohort/tile-labels.js"></script><script>
 const labels={skill:'Player skill',faction:'Faction',player_count:'Players',opponent:'Opponent faction',min_elo:'Custom player Elo cutoff',min_table_elo:'Minimum table-average Elo',layout:'Map layout',auction:'Auction',faction_variant:'Faction balance',faction_variant_version:'Balance version',official_center_sectors:'Official center sectors',final_scoring:'Final scoring includes',technology:'Technology available',...Object.fromEntries(Array.from({length:6},(_,i)=>['round'+(i+1),'Round '+(i+1)+' scoring']))};
 const primary=['skill','faction','player_count','opponent','min_elo'];
 const setup=['round1','round2','round3','round4','round5','round6','final_scoring','technology','layout','auction','faction_variant','faction_variant_version','official_center_sectors','min_table_elo'];
@@ -35,7 +35,7 @@ function controls(options){
   for(const key of keys){const label=node('label',labels[key]);let input;
    if(key==='min_elo'||key==='min_table_elo'){input=document.createElement('input');input.type='number';input.placeholder=key==='min_table_elo'?'Any (Tim’s workbook: 200)':'Enter pregame Elo';input.step='any';if(key==='min_elo')label.hidden=saved[version].skill!=='custom'}
    else if(key==='skill'){input=document.createElement('select');for(const [value,title] of [['all','All skill levels'],['top','Top players · top 10%'],['custom','Custom Elo cutoff']])input.append(new Option(title,value))}
-   else{input=document.createElement('select');input.append(new Option('Any',''));for(const value of options[key]||[])input.append(new Option(String(value),String(value)))}
+   else{input=document.createElement('select');input.append(new Option('Any',''));for(const value of options[key]||[])input.append(new Option(key==='technology'?GaiaTiles.tile(value):key==='final_scoring'?GaiaTiles.label('final',value):/^round[1-6]$/.test(key)?GaiaTiles.label('round',value):['faction','opponent'].includes(key)?GaiaTiles.faction(value):String(value),String(value)))}
    input.value=saved[version][key]||(key==='skill'?'all':'');input.addEventListener('change',()=>{if(input.value)saved[version][key]=input.value;else delete saved[version][key];if(key==='skill'){if(input.value!=='custom')delete saved[version].min_elo;controls(options);if(input.value==='custom'&&!saved[version].min_elo){++requestId;el('status').textContent='Enter a player Elo cutoff to load custom results.';el('groups').replaceChildren();el('stats').replaceChildren();el('games').replaceChildren();el('export').hidden=true;return}}load(false)});label.append(input);root.append(label);
   }
  }
@@ -47,7 +47,7 @@ function render(data){
  el('status').textContent=`${version==='base'?'Base Game':'Lost Fleet'} only · ${skillLabel}${thresholds?' · '+thresholds:''} · ${data.rejected_games} rejected imports across the dataset. Data covers imported games, not the full BGS archive.`;
  el('groups').replaceChildren();el('empty').hidden=data.groups.length>0;
  for(const g of data.groups){const tr=document.createElement('tr');const faction=node('td',g.faction);faction.append(node('small',`${g.player_count} players · ${g.layout} · ${g.auction} · ${g.faction_variant} v${g.faction_variant_version} · official center: ${g.official_center_sectors}`));tr.append(faction,node('td',g.build_order));const n=node('td',String(g.samples));n.append(Object.assign(node('small',g.enough_samples?'5+ samples':'Limited evidence'),{className:g.enough_samples?'good':'sample'}));tr.append(n,node('td',g.average_score.toFixed(1)),node('td',(100*g.win_share).toFixed(1)+'%'),node('td',g.average_elo===null?'—':g.average_elo.toFixed(0)));el('groups').append(tr)}
- el('games').replaceChildren();for(const r of data.rows){const d=document.createElement('details');const s=node('summary',`${r.game_id} · ${r.faction} · ${r.score} VP · rank ${r.rank}`);const link=node('a','View on BGS');link.href='https://www.boardgamers.space/game/'+encodeURIComponent(r.game_id);link.target='_blank';link.rel='noopener';d.append(s,link,node('pre',r.opening_moves.join('\n')),node('pre','VP sources: '+JSON.stringify(r.vp_sources,null,2)));el('games').append(d)}
+ el('games').replaceChildren();for(const r of data.rows){const d=document.createElement('details');const s=node('summary',`${r.game_id} · ${r.faction} · ${r.score} VP · rank ${r.rank}`);const link=node('a','View on BGS');link.href='https://www.boardgamers.space/game/'+encodeURIComponent(r.game_id);link.target='_blank';link.rel='noopener';d.append(s,link,node('pre',r.opening_moves.map(GaiaTiles.move).join('\n')),node('pre','VP sources:\n'+Object.entries(r.vp_sources).map(([key,value])=>GaiaTiles.source(key)+': '+value).join('\n')));el('games').append(d)}
 }
 async function load(rebuild=true){
  const id=++requestId;el('error').textContent='';el('status').textContent='Loading…';el('export').hidden=true;el('groups').replaceChildren();el('stats').replaceChildren();el('games').replaceChildren();el('empty').hidden=true;

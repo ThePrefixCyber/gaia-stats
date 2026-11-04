@@ -19,7 +19,7 @@ from .scoring_views import ScoringViews, round_reference_filters
 from .chart_groups import technology_id, opening_configuration
 
 PLOTS = ('advanced-tech-frequency', 'advanced-tech-score', 'basic-tech-frequency',
-         'basic-tech-score', 'round-one-structures', 'final-scoring',
+         'basic-tech-score', 'basic-tech-setup-score', 'round-one-structures', 'final-scoring',
          'round-scoring', 'point-sources')
 
 
@@ -207,6 +207,11 @@ def statistics(rows, kind):
                 cell.update(q1=q1,median=median,q3=q3,lower=min(values),upper=max(values))
             if len(values)<=2000:cell['values']=values
             cells.append(cell)
+    if kind in ('basic-tech-frequency','basic-tech-score','basic-tech-setup-score'):
+        from .basic_tech import statistics as basic_statistics
+        # Preserve the deduplicated tile summaries for API compatibility; the
+        # three requested basic-tech charts use their distinct setup cohorts.
+        return {**basic_statistics(rows, kind), **extra}
     value_label='Mean final net VP'
     if kind in ('round-scoring','final-scoring'):
         value_label='Mean VP earned from scoring tile(s)'
@@ -264,6 +269,9 @@ def final_scoring_comparison(plot, filters):
 
 
 def report(dataset, filters, *, finalize=True):
+    if filters.get('plot') in (None,'basic-tech-frequency','basic-tech-score','basic-tech-setup-score'):
+        from .basic_tech import prepare
+        dataset = {**dataset, 'rows':prepare(dataset['rows'])}
     rows = cohort(dataset, filters)
     # Persistent faction comparisons retain the setup and every other filter,
     # but the chart, selected-cohort summary and export still honor faction.
@@ -349,7 +357,8 @@ def response(dataset, path, filters):
         script = (root / 'tile-labels.js').read_text()
         registry = json.loads((root / 'tile-labels.json').read_text())
         return script.replace('__TILE_REGISTRY__', json.dumps(registry)).encode(), 'application/javascript'
-    assets = {'/cohort/app.js': ('app.js', 'application/javascript'),
+    assets = {'/cohort/basic-tech.js': ('basic-tech.js', 'application/javascript'),
+              '/cohort/app.js': ('app.js', 'application/javascript'),
               '/cohort/tables.js': ('tables.js', 'application/javascript'),
               '/cohort/styles.css': ('styles.css', 'text/css; charset=utf-8')}
     if path in assets:

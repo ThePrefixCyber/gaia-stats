@@ -12,6 +12,7 @@ const setup="import sys,json;sys.path.insert(0,'tests');from test_final_combinat
  if(u.pathname==='/cohort/tile-labels.js'){body=labels;contentType='application/javascript';}
  else if(u.pathname==='/cohort/tables.js'){body=fs.readFileSync('web/cohort/tables.js','utf8');contentType='application/javascript';}
  else if(u.pathname==='/cohort/styles.css'){body=fs.readFileSync('web/cohort/styles.css','utf8');contentType='text/css';}
+ else if(u.pathname==='/cohort/basic-tech.js'){body=fs.readFileSync('web/cohort/basic-tech.js','utf8');contentType='application/javascript';}
  else if(u.pathname==='/cohort/app.js'){body=fs.readFileSync('web/cohort/app.js','utf8');contentType='application/javascript';}
  else if(u.pathname.includes('plotly')){body=plotly;contentType='application/javascript';}
  else if(u.pathname.endsWith('/catalog')){body=py(setup+"print(response(d,'/cohort/api/catalog',{})[0].decode())");contentType='application/json';}

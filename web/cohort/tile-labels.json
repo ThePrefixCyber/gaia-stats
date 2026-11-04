@@ -4,115 +4,136 @@
       "description": "Pass: 3 VP per federation token",
       "aliases": [
         "3vp_per_fed_pass"
-      ]
+      ],
+      "short": "3vp / Fed Pass"
     },
     "advtech2": {
       "description": "Each research advance: 2 VP",
       "aliases": [
         "2vp_per_tech_bump"
-      ]
+      ],
+      "short": "2vp / Research"
     },
     "advtech3": {
       "description": "Once-per-round action: gain 1 QIC and 5 credits",
       "aliases": [
         "1qic_5c_action"
-      ]
+      ],
+      "short": "1q5c Action"
     },
     "advtech4": {
       "description": "Immediate: 2 VP per current mine",
       "aliases": [
         "2vp_per_mine"
-      ]
+      ],
+      "short": "2vp / Mine Now"
     },
     "advtech5": {
       "description": "Pass: 3 VP per research lab",
       "aliases": [
         "3vp_per_rl_pass"
-      ]
+      ],
+      "short": "3vp / Lab Pass"
     },
     "advtech6": {
       "description": "Immediate: 1 ore per occupied Space sector",
       "aliases": [
         "1o_per_sector"
-      ]
+      ],
+      "short": "1o / Sector"
     },
     "advtech7": {
       "description": "Pass: 1 VP per colonized planet type",
       "aliases": [
         "1vp_per_terra_pass"
-      ]
+      ],
+      "short": "1vp / Type Pass"
     },
     "advtech8": {
       "description": "Immediate: 2 VP per colonized Gaia planet",
       "aliases": [
         "2vp_per_gaia"
-      ]
+      ],
+      "short": "2vp / Gaia Now"
     },
     "advtech9": {
       "description": "Immediate: 4 VP per current trading station",
       "aliases": [
         "4vp_per_ts"
-      ]
+      ],
+      "short": "4vp / TS Now"
     },
     "advtech10": {
       "description": "Immediate: 2 VP per occupied Space sector",
       "aliases": [
         "2vp_per_sector"
-      ]
+      ],
+      "short": "2vp / Sector Now"
     },
     "advtech11": {
       "description": "Once-per-round action: gain 3 ore",
       "aliases": [
         "3o_action"
-      ]
+      ],
+      "short": "3o Action"
     },
     "advtech12": {
       "description": "Immediate: 5 VP per federation token",
       "aliases": [
         "5vp_per_fed"
-      ]
+      ],
+      "short": "5vp / Fed Now"
     },
     "advtech13": {
       "description": "Once-per-round action: gain 3 knowledge",
       "aliases": [
         "3k_action"
-      ]
+      ],
+      "short": "3k Action"
     },
     "advtech14": {
       "description": "Each mine built: 3 VP",
       "aliases": [
         "3vp_per_mine_place"
-      ]
+      ],
+      "short": "3vp / Mine"
     },
     "advtech15": {
       "description": "Each trading station built: 3 VP",
       "aliases": [
         "3vp_per_ts_place"
-      ]
+      ],
+      "short": "3vp / TS"
     },
     "advtech-asteroidpass": {
       "description": "Pass: 2 VP per colonized asteroid",
-      "aliases": []
+      "aliases": [],
+      "short": "2vp / Asteroid Pass"
     },
     "advtech-big": {
       "description": "Immediate: 6 VP per planetary institute / academy (maximum 18 VP)",
-      "aliases": []
+      "aliases": [],
+      "short": "6vp / PI/AC Now"
     },
     "advtech-deep": {
       "description": "Immediate: 4 VP per colonized Deep Space sector",
-      "aliases": []
+      "aliases": [],
+      "short": "4vp / Deep Sector Now"
     },
     "advtech-deeppass": {
       "description": "Pass: 2 VP per colonized Deep Space sector",
-      "aliases": []
+      "aliases": [],
+      "short": "2vp / Deep Sector Pass"
     },
     "advtech-qaction": {
       "description": "Each spaceship QIC action: 4 VP",
-      "aliases": []
+      "aliases": [],
+      "short": "4vp / Ship QIC"
     },
     "advtech-terra": {
       "description": "Each terraforming step: 2 VP",
-      "aliases": []
+      "aliases": [],
+      "short": "2vp / Terraform"
     }
   },
   "basic": {
@@ -120,67 +141,79 @@
       "description": "Immediate: gain 1 ore and 1 QIC",
       "aliases": [
         "1q_1o"
-      ]
+      ],
+      "short": "1o1q"
     },
     "tech2": {
       "description": "Immediate: gain 1 knowledge per colonized planet type",
       "aliases": [
         "k_per_terra"
-      ]
+      ],
+      "short": "1k / Planet Type"
     },
     "tech3": {
       "description": "Planetary institute and academies have power value 4",
       "aliases": [
         "4pip"
-      ]
+      ],
+      "short": "4pip PI/AC"
     },
     "tech4": {
       "description": "Immediate: gain 7 VP",
       "aliases": [
         "7vp"
-      ]
+      ],
+      "short": "7vp"
     },
     "tech5": {
       "description": "Income: gain 1 ore and charge 1 power",
       "aliases": [
         "1o_1pw"
-      ]
+      ],
+      "short": "1o1pw Income"
     },
     "tech6": {
       "description": "Income: gain 1 knowledge and 1 credit",
       "aliases": [
         "1k_1c"
-      ]
+      ],
+      "short": "1k1c Income"
     },
     "tech7": {
       "description": "Each mine built on Gaia: 3 VP",
       "aliases": [
         "3vp_per_gaia_place"
-      ]
+      ],
+      "short": "3vp / Gaia Mine"
     },
     "tech8": {
       "description": "Income: gain 4 credits",
       "aliases": [
         "4c"
-      ]
+      ],
+      "short": "4c Income"
     },
     "tech9": {
       "description": "Once-per-round action: charge 4 power",
       "aliases": [
         "4pw"
-      ]
+      ],
+      "short": "4pw Action"
     },
     "ship-tech-range": {
       "description": "While uncovered: +1 basic range",
-      "aliases": []
+      "aliases": [],
+      "short": "+1 Range"
     },
     "ship-tech-terraform": {
       "description": "Immediate: build a free mine with up to 2 free terraforming steps; extra ore / QIC may be spent",
-      "aliases": []
+      "aliases": [],
+      "short": "2tf Mine"
     },
     "ship-tech-resource": {
       "description": "Immediate: gain 1 ore and 3 knowledge",
-      "aliases": []
+      "aliases": [],
+      "short": "1o3k"
     }
   },
   "round": {
@@ -188,111 +221,133 @@
       "description": "This round: 2 VP per terraforming step",
       "aliases": [
         "2vp_per_terra"
-      ]
+      ],
+      "short": "2vp / Terraform"
     },
     "score2": {
       "description": "This round: 2 VP per research advance",
       "aliases": [
         "2vp_per_research_bump"
-      ]
+      ],
+      "short": "2vp / Research"
     },
     "score3": {
       "description": "This round: 2 VP per mine built",
       "aliases": [
         "2vp_per_mine_place"
-      ]
+      ],
+      "short": "2vp / Mine"
     },
     "score4": {
       "description": "This round: 5 VP per federation token gained",
       "aliases": [
         "5vp_per_fed_place"
-      ]
+      ],
+      "short": "5vp / Fed"
     },
     "score5": {
       "description": "This round: 4 VP per trading station built",
       "aliases": [
         "4vp_per_ts_place"
-      ]
+      ],
+      "short": "4vp / TS"
     },
     "score6": {
       "description": "This round: 4 VP per mine built on Gaia",
       "aliases": [
         "4vp_per_gaia_place"
-      ]
+      ],
+      "short": "4vp / Gaia Mine"
     },
     "score7": {
       "description": "This round: 5 VP per planetary institute / academy built",
       "aliases": [
         "5vp_per_3pip_place"
-      ]
+      ],
+      "short": "5vp / PI/AC"
     },
     "score8": {
       "description": "This round: 3 VP per trading station built",
       "aliases": [
         "3vp_per_ts_place"
-      ]
+      ],
+      "short": "3vp / TS"
     },
     "score9": {
       "description": "This round: 3 VP per mine built on Gaia",
       "aliases": [
         "3vp_per_gaia_place"
-      ]
+      ],
+      "short": "3vp / Gaia Mine"
     },
     "score10": {
       "description": "This round: 5 VP per planetary institute / academy built",
       "aliases": [
         "5vp_per_3pip_place"
-      ]
+      ],
+      "short": "5vp / PI/AC"
     },
     "lflab4": {
       "description": "This round: 4 VP per research lab built",
-      "aliases": []
+      "aliases": [],
+      "short": "4vp / Lab"
     },
     "lfsector3": {
       "description": "This round: 3 VP per new Space / Deep Space sector colonized",
-      "aliases": []
+      "aliases": [],
+      "short": "3vp / New Sector"
     },
     "lfplanet3": {
       "description": "This round: 3 VP per new planet type colonized",
-      "aliases": []
+      "aliases": [],
+      "short": "3vp / New Type"
     }
   },
   "final": {
     "structure": {
       "description": "Most structures",
-      "aliases": []
+      "aliases": [],
+      "short": "Structures"
     },
     "structureFed": {
       "description": "Most structures in federations",
-      "aliases": []
+      "aliases": [],
+      "short": "Federated Structures"
     },
     "planetType": {
       "description": "Most colonized planet types",
-      "aliases": []
+      "aliases": [],
+      "short": "Planet Types"
     },
     "gaia": {
       "description": "Most colonized Gaia planets",
-      "aliases": []
+      "aliases": [],
+      "short": "Gaia Planets"
     },
     "sector": {
       "description": "Most colonized Space sectors",
-      "aliases": []
+      "aliases": [],
+      "short": "Space Sectors"
     },
     "satellite": {
       "description": "Most satellites (including Ivits space stations)",
-      "aliases": []
+      "aliases": [],
+      "short": "Satellites + Ivits Stations"
     },
     "asteroid": {
       "description": "Most colonized asteroids",
-      "aliases": []
+      "aliases": [],
+      "short": "Asteroids"
     },
     "deepSpaceSector": {
       "description": "Most colonized Deep Space sectors",
-      "aliases": []
+      "aliases": [],
+      "short": "Deep Sectors"
     },
     "piAcademyDistance": {
       "description": "Greatest distance from planetary institute to farthest academy",
-      "aliases": []
+      "aliases": [],
+      "short": "PI–Farthest AC Distance"
     }
   },
   "booster": {
@@ -300,91 +355,143 @@
       "description": "Income: 1 knowledge and 1 ore",
       "aliases": [
         "1k_1o"
-      ]
+      ],
+      "short": "1k1o Income"
     },
     "booster2": {
       "description": "Income: 1 ore and 2 power tokens",
       "aliases": [
         "2pwt_1o"
-      ]
+      ],
+      "short": "1o2pwt Income"
     },
     "booster3": {
       "description": "Income: 1 QIC and 2 credits",
       "aliases": [
         "1qic_2c"
-      ]
+      ],
+      "short": "1q2c Income"
     },
     "booster4": {
       "description": "Income: 2 credits; action: 1 terraforming step",
       "aliases": [
         "2c_terra"
-      ]
+      ],
+      "short": "2c + 1tf Action"
     },
     "booster5": {
       "description": "Income: charge 2 power; action: +3 range",
       "aliases": [
         "2pw_nav"
-      ]
+      ],
+      "short": "2pw + Range Action"
     },
     "booster6": {
       "description": "Income: 1 ore; pass: 1 VP per mine",
       "aliases": [
         "1o_1vp_per_mine"
-      ]
+      ],
+      "short": "1o + Mine Pass"
     },
     "booster7": {
       "description": "Income: 1 ore; pass: 2 VP per trading station",
       "aliases": [
         "1o_2vp_per_ts"
-      ]
+      ],
+      "short": "1o + TS Pass"
     },
     "booster8": {
       "description": "Income: 1 knowledge; pass: 3 VP per research lab",
       "aliases": [
         "1k_3vp_per_rl"
-      ]
+      ],
+      "short": "1k + Lab Pass"
     },
     "booster9": {
       "description": "Income: charge 4 power; pass: 4 VP per planetary institute / academy",
       "aliases": [
         "4pw_4vp_per_3pip"
-      ]
+      ],
+      "short": "4pw + PI/AC Pass"
     },
     "booster10": {
       "description": "Income: 4 credits; pass: 1 VP per colonized Gaia planet",
       "aliases": [
         "4c_1vp_per_gaia"
-      ]
+      ],
+      "short": "4c + Gaia Pass"
     },
     "booster-lostfleet-former": {
       "description": "Income: 1 ore; pass: 3 VP per Gaiaformer on board or faction board (not asteroid-colonizing Gaiaformers)",
-      "aliases": []
+      "aliases": [],
+      "short": "1o + Gaiaformer Pass"
     },
     "booster-lostfleet-planet": {
       "description": "Income: 1 ore; pass: 1 VP per colonized planet type",
-      "aliases": []
+      "aliases": [],
+      "short": "1o + Type Pass"
     },
     "booster-lostfleet-deep": {
       "description": "Income: 3 credits; pass: 2 VP per colonized Deep Space sector",
-      "aliases": []
+      "aliases": [],
+      "short": "3c + Deep Pass"
     },
     "booster-lostfleet-instant": {
       "description": "Income: charge 2 power; action: instant Gaiaforming with a Gaiaformer, without moving power tokens",
-      "aliases": []
+      "aliases": [],
+      "short": "2pw + Instant Gaia"
     }
   },
   "action": {
     "qic1": {
       "description": "Pay 4 QIC: gain a technology tile",
-      "aliases": []
+      "aliases": [],
+      "short": "4q → Tech"
     },
     "qic2": {
       "description": "Pay 3 QIC: rescore one owned federation token",
-      "aliases": []
+      "aliases": [],
+      "short": "3q → Re-score Fed"
     },
     "qic3": {
       "description": "Pay 2 QIC: gain 3 VP plus 1 VP per colonized planet type",
-      "aliases": []
+      "aliases": [],
+      "short": "2q → Planet VP"
+    },
+    "power1": {
+      "description": "Pay 7 power: gain 3 knowledge",
+      "aliases": [],
+      "short": "7pw → 3k"
+    },
+    "power2": {
+      "description": "Pay 5 power: gain 2 free terraforming steps",
+      "aliases": [],
+      "short": "5pw → 2tf"
+    },
+    "power3": {
+      "description": "Pay 4 power: gain 2 ore",
+      "aliases": [],
+      "short": "4pw → 2o"
+    },
+    "power4": {
+      "description": "Pay 4 power: gain 7 credits",
+      "aliases": [],
+      "short": "4pw → 7c"
+    },
+    "power5": {
+      "description": "Pay 4 power: gain 2 knowledge",
+      "aliases": [],
+      "short": "4pw → 2k"
+    },
+    "power6": {
+      "description": "Pay 3 power: gain 1 free terraforming step",
+      "aliases": [],
+      "short": "3pw → 1tf"
+    },
+    "power7": {
+      "description": "Pay 3 power: gain 2 new power tokens",
+      "aliases": [],
+      "short": "3pw → 2pwt"
     }
   }
 }
