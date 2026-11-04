@@ -13,6 +13,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from gaia_stats.eligibility import eligible_frame
 from gaia_stats.legacy_plots import (ROOT, PLOTS, LegacyPlotError,
                                     load_historical_csv, make_plot)
 
@@ -57,7 +58,9 @@ def figure_digest(figure):
 class OriginalPlotParityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.data = load_historical_csv()
+        cls.raw = load_historical_csv()
+        # Compare identical eligible cohorts; retain frozen source checks below.
+        cls.data = eligible_frame(cls.raw)
         cls.baseline = json.loads((Path(__file__).parent / 'legacy_baseline.json').read_text())
 
     def setUp(self):
@@ -70,14 +73,18 @@ class OriginalPlotParityTests(unittest.TestCase):
     def test_original_sources_and_csv_match_frozen_baseline(self):
         for name, expected in self.baseline['inputs'].items():
             self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), expected, name)
-        self.assertEqual(self.data.shape, (5687, 489))
+        self.assertEqual(self.raw.shape, (5687, 489))
+        self.assertEqual(self.data.shape, (3095, 489))
 
     def test_all_eight_views_match_original_terrans_regression(self):
         before = self.data.copy(deep=True)
         for kind, expected in self.baseline['terrans'].items():
             with self.subTest(kind=kind):
                 figure = historical_plot(kind, self.data, faction='terrans')
-                self.assertEqual(figure_digest(figure), expected['sha256'])
+                original_raw = original_figure(kind, self.raw, 'terrans')
+                self.assertEqual(figure_digest(original_raw), expected['sha256'])
+                original_eligible = original_figure(kind, self.data, 'terrans')
+                self.assertEqual(figure_digest(figure), figure_digest(original_eligible))
                 self.assertEqual(len(figure.data), expected['traces'])
         pd.testing.assert_frame_equal(self.data, before)
 

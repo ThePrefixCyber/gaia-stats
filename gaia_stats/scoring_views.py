@@ -60,7 +60,7 @@ class ScoringViews:
             self.share_groups.add(group)
             complete = complete_ledger(row)
             self.complete_counts[group] += int(complete)
-            sources = (set(row['vp_sources']) - set(ROUND_FILTERS) - {'final1','final2'}) | {'round','final'}
+            sources = (set(row['vp_sources']) - set(ROUND_FILTERS) - {'final1','final2','bid'}) | {'round','final'}
             self.sources.update(sources)
             for source in sources:
                 value = known_source(row, source)
@@ -79,7 +79,7 @@ class ScoringViews:
                 values=self.shares[key]+[0.]*zeros
                 cells.append({'label':source,'player_count':group[0],'rank':group[1],**distribution(values)})
         return {'rank_cells':cells,'invalid_share_denominators':self.invalid_denominators,
-                'share_note':'Signed contribution / positive final net score × 100, separately by competition rank and player count. Tied ranks stay tied. Round and final tiles are combined; all other source IDs follow the dataset (canonical historical base categories, raw BGS sources for Lost Fleet). Unknown contributions are excluded per source; complete-ledger absences are zero. Nonpositive scores excluded from shares only. No historical >100 cutoff or bid restoration; charge and bid remain negative. Descriptive distributions, not additive median percentages.'}
+                'share_note':'Signed contribution / positive pre-bid score × 100, separately by competition rank and player count. Tied ranks stay tied. Round and final tiles are combined; all other source IDs follow the dataset (canonical historical base categories, raw BGS sources for Lost Fleet). Unknown contributions are excluded per source; complete-ledger absences are zero. Nonpositive scores excluded from shares only. Auction contributions are excluded from both numerator and denominator; charging remains signed. Games with any known pre-bid score below 100 VP are excluded. Descriptive distributions, not additive median percentages.'}
 
     def add_rounds(self, selected, reference):
         for row in reference:
@@ -109,4 +109,4 @@ class ScoringViews:
                               'win_baseline':baseline,'win_baseline_samples':baseline_n,
                               'win_difference':wins/n-baseline if baseline is not None else None})
         return {'comparison_cells':cells,'round_selection_required':None if self.filters.get('faction') else 'faction',
-                'round_note':'Faction round scoring: observed tile VP and shared-win difference from this faction’s baseline, separately by player count. Baseline relaxes round1–round6 filters only; other settings, final-tile filters and Elo stay selected. Net-score wins split ties. Counts include wins independently of missing tile VP. Associations, not causal effects or a predicted optimal setup.'}
+                'round_note':'Faction round scoring: observed tile VP and shared-win difference from this faction’s baseline, separately by player count. Baseline relaxes round1–round6 filters only; other settings, final-tile filters and Elo stay selected. Pre-bid-score wins split ties. Counts include wins independently of missing tile VP. Associations, not causal effects or a predicted optimal setup.'}

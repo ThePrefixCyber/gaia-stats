@@ -4,7 +4,11 @@ from statistics import mean
 import math
 import re
 
+from .eligibility import final_score
 from .scoring import phase_views, BASE_SOURCES, NORMALIZATION_VERSION
+from .score_basis import analysis_rows
+
+from .eligibility import eligible_rows, faction_variant
 
 RULESETS = ("base", "lost-fleet")
 
@@ -75,6 +79,7 @@ def normalize(game):
         raise ValueError("Game has a dropped or withdrawn player")
     if len(states) != len(players):
         raise ValueError("Player state count mismatch")
+    variant, variant_metadata = faction_variant(game)
     options = {**game.get("game", {}).get("options", {}), **data.get("options", {})}
     tiles = data["tiles"]
     round_tiles = tiles["scorings"]["round"]
@@ -114,7 +119,9 @@ def normalize(game):
         raise ValueError("Incomplete round log")
     canonical, tile_scores, scoring_errors, ended = phase_views(data, len(players))
     rows = []
-    scores = [p["score"] for p in players]
+    scores = [final_score(p.get("score")) for p in players]
+    if any(score is None for score in scores):
+        raise ValueError("Missing or invalid final score; not treated as zero")
     top_count = scores.count(max(scores))
     for pos, player in enumerate(players):
         state = states[pos]
@@ -143,7 +150,7 @@ def normalize(game):
             "opponents": sorted(p["faction"] for i, p in enumerate(players) if i != pos),
             "score": player["score"], "rank": 1 + sum(s > player["score"] for s in scores),
             "win_share": 1 / top_count if player["score"] == max(scores) else 0,
-            "bid": state["data"].get("bid"), "elo": elo,
+            "bid": state["data"].get("bid"), "bid_cost": state["data"].get("bid"), "elo": elo,
             "table_elo": mean(p["elo"]["initial"] for p in players)
             if all(p.get("elo", {}).get("initial") is not None for p in players) else None,
             "opponent_elo": mean(opponents) if all(x is not None for x in opponents) else None,
@@ -153,7 +160,8 @@ def normalize(game):
             "boosters": sorted(tiles["boosters"]),
             "layout": options.get("layout", "standard"),
             "auction": options.get("auction", "none"),
-            "faction_variant": options.get("factionVariant", "standard"),
+            "faction_variant": variant,
+            "faction_variant_sources": variant_metadata,
             "faction_variant_version": options.get("factionVariantVersion", 0),
             "official_center_sectors": options.get("officialCenterSectors", False),
             "map": options.get("map"),
@@ -165,10 +173,11 @@ def normalize(game):
             "scoring_vp": tile_scores[pos] if complete and scoring_errors[pos] is None else None,
             "scoring_vp_unavailable": scoring_errors[pos] or (None if complete else "Final scoring phase is not verified"),
             "score_delta": delta, "score_verified": delta == 0,
+            "bid_delta": raw_sources.get("bid", 0) if delta == 0 and any(event.get("phase") == "endGame" for event in data["advancedLog"]) else None,
             "exploration_ships": state["data"].get("explorationShips", {}),
             "artifacts": state["data"].get("artifacts", []),
         })
-    return rows
+    return analysis_rows(rows)
 
 
 def skill_context(rows, filters):
@@ -177,7 +186,7 @@ def skill_context(rows, filters):
     The unit is a player-game observation's pregame Elo, not unique people or
     current ratings. Each player count has its own threshold within a ruleset.
     """
-    rows = [row for row in rows if variant_included(row, filters)]
+    rows = [row for row in analysis_rows(eligible_rows(rows)) if row["score"] is not None and row["rank"] is not None and variant_included(row, filters)]
     mode = filters.get("skill", "custom" if filters.get("min_elo") else "all")
     if mode not in ("all", "top", "custom"):
         raise ValueError("Choose all, top, or custom player skill")
@@ -215,6 +224,8 @@ def select(rows, filters):
     version = filters.get("ruleset")
     if version not in RULESETS:
         raise ValueError("Choose base or lost-fleet explicitly")
+    rows = [row for row in analysis_rows(eligible_rows(rows))
+            if row["score"] is not None and row["rank"] is not None]
     skill = skill_context(rows, filters)
     table_minimum = None
     if filters.get("min_table_elo"):
@@ -252,6 +263,8 @@ def select(rows, filters):
 
 
 def summarize(rows, minimum=5):
+    rows = [row for row in analysis_rows(eligible_rows(rows))
+            if row["score"] is not None and row["rank"] is not None]
     groups = defaultdict(list)
     for row in rows:
         # Factions and setup variants remain separate even when viewing all factions.

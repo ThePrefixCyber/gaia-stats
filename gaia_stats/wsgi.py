@@ -9,6 +9,7 @@ from threading import Lock
 from collections import OrderedDict
 from urllib.parse import parse_qs
 
+from .eligibility import eligible_rows, require_safe_policy
 from .__main__ import ingest, response_for
 from .legacy_cache import is_classic_path
 
@@ -26,9 +27,10 @@ def running_commit():
 
 
 class Application:
-    def __init__(self, dataset_path, classic_cache=None, base_cohort=None, seed_missing=True, code_commit=_UNSET):
+    def __init__(self, dataset_path, classic_cache=None, base_cohort=None, seed_missing=True, code_commit=_UNSET, excluded_game_ids=()):
         self.path = Path(dataset_path)
         self.classic_cache = classic_cache
+        self.excluded_game_ids = frozenset(excluded_game_ids)
         self.base_cohort = Path(base_cohort) if base_cohort else None
         self.cohort_lock = Lock()
         self.cohort_cache = OrderedDict()
@@ -54,6 +56,8 @@ class Application:
                 candidate = json.loads(self.path.read_text())
                 if candidate.get("schema_version") != 1 or not isinstance(candidate.get("rows"), list):
                     raise ValueError("Unsupported dataset")
+                require_safe_policy(candidate.get("eligibility_policy"))
+                candidate["rows"] = [r for r in eligible_rows(candidate["rows"]) if r["game_id"] not in self.excluded_game_ids]
                 self.dataset, self.version = candidate, version
             return self.dataset, self.version
 
@@ -142,7 +146,7 @@ class Application:
                     headers.append(('Content-Disposition', 'attachment; filename="gaia-cohort.csv"'))
             elif self.classic_cache is not None and is_classic_path(path):
                 from .legacy_cache import cache_response
-                body, content_type, download = cache_response(self.classic_cache, path, filters)
+                body, content_type, download = cache_response(self.classic_cache, path, filters, excluded_game_ids=self.excluded_game_ids)
                 if download:
                     headers.append(("Content-Disposition", f'attachment; filename="{download}"'))
             elif path == "/healthz":
@@ -177,23 +181,29 @@ class ReleaseApplication:
     """Pin each request to one immutable release; discard old response caches on swap."""
     def __init__(self,root,classic_cache=None):
         self.root=Path(root);self.classic_cache=classic_cache;self.lock=Lock()
-        self.active=None;self.app=None;self.manifest=None
+        self.active=None;self.exclusion_version=None;self.app=None;self.manifest=None
         self.work_lock=Lock();self.commit=running_commit()
 
     def __call__(self,environ,start_response):
-        from .releases import current,validate
+        from .releases import current,validate,known_exclusions
         try:
             with self.lock:
                 path=current(self.root)
                 if path is None:raise ValueError('No validated data release has been published')
-                if path!=self.active:
+                try:
+                    info=(self.root/'exclusions.json').stat()
+                    exclusion_version=(info.st_mtime_ns, info.st_size)
+                except FileNotFoundError:exclusion_version=None
+                if path!=self.active or exclusion_version!=self.exclusion_version:
                     with self.work_lock:
-                        manifest=validate(path)
+                        excluded=known_exclusions(self.root)
+                        manifest=validate(path,known_exclusions=excluded)
                         if manifest.get('schema_version')!=1:raise ValueError('Unsupported data release')
                         app=Application(path/'lost-fleet.json',classic_cache=self.classic_cache,
-                                        base_cohort=path/'base.sqlite',seed_missing=False,code_commit=self.commit)
+                                        base_cohort=path/'base.sqlite',seed_missing=False,code_commit=self.commit,excluded_game_ids=excluded)
                         app.cohort_lock=self.work_lock
                         self.active,self.app,self.manifest=path,app,manifest
+                        self.exclusion_version=exclusion_version
                 app,manifest=self.app,self.manifest
             # References above keep an in-flight request pinned while another swaps releases.
             if environ.get('PATH_INFO')=='/healthz' and environ.get('REQUEST_METHOD','GET')=='GET':
@@ -224,6 +234,10 @@ class ReleaseApplication:
 
 
 def create_app():
+    if os.environ.get('GAIA_DATA_BUNDLE'):
+        from .data_bundle import paths
+        bundle = paths(os.environ['GAIA_DATA_BUNDLE'], require_ready=True)
+        return ReleaseApplication(bundle['root'], bundle['classic_cache'])
     if os.environ.get('GAIA_RELEASE_ROOT'):
         return ReleaseApplication(os.environ['GAIA_RELEASE_ROOT'],os.environ.get('GAIA_CLASSIC_CACHE'))
     return Application(os.environ.get("GAIA_DATASET", "data/analysis.json"),

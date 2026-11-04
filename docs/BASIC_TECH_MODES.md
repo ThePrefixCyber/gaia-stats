@@ -9,7 +9,7 @@ faction. Raw exports, historical CSVs, scoring and archive checkpoints are uncha
    in that location and known ownership. Hover also reports conditional rank
    frequencies and the cohort rank baseline. Free slots collapse and a
    player-game/tile/bucket counts once.
-2. **Score when taken** shows pooled mean final net VP among acquirers at each
+2. **Score when taken** shows pooled mean pre-bid VP among acquirers at each
    original location, plus Taken and Not taken summaries and the cohort mean.
    Individual free slots remain separate here. This matches the meaning of
    Tim's “By Track Taken”: source location, not the research track advanced.
@@ -25,7 +25,7 @@ count zero does not mean that the tile was absent.
 ## Evidence and deliberate differences
 
 Tim's `basic_tech.ipynb` restores auction bids and averages rank-group means,
-then location means, equally. These views retain net VP and weight each eligible
+then location means, equally. These views also exclude auction costs and weight each eligible
 player-game equally. Taken/Not taken summaries include free locations, unlike
 Tim's original. These are descriptive associations, not causal effects.
 

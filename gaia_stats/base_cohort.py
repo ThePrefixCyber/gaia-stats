@@ -9,6 +9,10 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
+from .score_basis import analysis_rows, csv_sources, SCORE_BASIS_VERSION
+
+
+from .eligibility import BASE_ELIGIBLE_SQL, EXCLUDED_FACTION_VARIANT, POLICY_VERSION, excluded_csv_game, require_safe_policy
 
 def number(value):
     try:
@@ -18,6 +22,8 @@ def number(value):
 
 
 def convert(game, count):
+    if excluded_csv_game(game):
+        return []
     if any(game.get(f'pos_{p}_dropped') != 'False' for p in range(1,count+1)):
         return []
     scores=[number(game.get(f'pos_{p}_score')) for p in range(1,count+1)]
@@ -31,9 +37,8 @@ def convert(game, count):
         owned=[{'tile':tile,'slot':slot} for slot,tile in techs.items()
                if game.get(prefix+('adv_tech_taken_' if slot.startswith('adv-') else 'tech_taken_')+tile)=='True']
         structures={kind:number(game.get(prefix+'buildings_r_1_'+kind)) for kind in ('m','ts','lab','PI','ac1','ac2')}
-        sources={k.removeprefix(prefix+'score_'):number(v) for k,v in game.items() if k.startswith(prefix+'score_')}
-        # Preserve signed CSV contributions verbatim; no claim of ledger reconciliation.
-        sources={k:v for k,v in sources.items() if v is not None}
+        csv_position_sources={k.removeprefix(prefix+'score_'):number(v) for k,v in game.items() if k.startswith(prefix+'score_')}
+        sources, source_rank = csv_sources(game, p)
         tech_score=number(game.get(prefix+'tech_score'))
         if tech_score is not None:sources['research']=tech_score
         rows.append({'game_id':game['id'],'ruleset':'base','faction':game[prefix+'faction'],
@@ -45,26 +50,38 @@ def convert(game, count):
             'round_scorings':rounds,'final_scorings':finals,'technologies':techs,
             'ship_technologies':{},'owned_technologies':owned,
             'round_one_structures':structures if all(v is not None for v in structures.values()) else None,
-            'vp_sources':sources,'vp_ledger_complete':False,'score_verified':True,'score_basis':'CSV final score; ledger not reverified',
+            'vp_sources':sources,'vp_sources_csv_position':csv_position_sources,
+            'csv_source_rank':source_rank,'csv_sources_unavailable':None if source_rank else 'Source ownership unavailable or overwritten by a net-score tie',
+            'vp_ledger_complete':False,'score_verified':True,'score_basis':'CSV final score; ledger not reverified',
             'lf_2p_4qic_effective':False,'opponents':[],'table_elo':None,
-            'bid':number(game.get(prefix+'score_bid'))})
-    return rows
+            'bid':number(game.get(prefix+'bid')),
+            'bid_cost':number(game.get(prefix+'bid')),
+            'bid_delta':-number(game.get(prefix+'bid')) if number(game.get(prefix+'bid')) is not None and number(game.get(prefix+'bid')) >= 0 else None})
+    return analysis_rows(rows)
 
 
 def build(csvs, destination):
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
     fd,temp=tempfile.mkstemp(prefix='base-cohort-',suffix='.sqlite',dir=destination.parent);os.close(fd)
+    # Inspect every input before insertion: an explicit marker excludes the
+    # entire game even if another source row for that ID says unknown/standard.
+    excluded=set()
+    for path in csvs.values():
+        with Path(path).open(newline='') as handle:
+            excluded.update(game['id'] for game in csv.DictReader(handle)
+                            if excluded_csv_game(game))
     counts={};catalog={k:set() for k in ('faction','layout','auction','faction_variant','round_scorings','final_scorings','advanced_technologies')}
     try:
         with sqlite3.connect(temp) as db:
             db.execute('CREATE TABLE observations (game_id TEXT, faction TEXT, player_count INTEGER, elo REAL, layout TEXT, auction TEXT, faction_variant TEXT, payload TEXT, PRIMARY KEY(game_id,faction))')
             db.execute('CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)')
+            db.execute('INSERT INTO metadata VALUES (?,?)', ('score_basis_version', SCORE_BASIS_VERSION))
             for count,path in sorted(csvs.items()):
                 accepted=rejected=records=0
                 with Path(path).open(newline='') as handle:
                     for game in csv.DictReader(handle):
                         if number(game.get('num_players'))!=count:raise ValueError('Wrong CSV player count')
-                        rows=convert(game,count)
+                        rows=[] if game['id'] in excluded else convert(game,count)
                         if not rows:rejected+=1;continue
                         for row in rows:
                             db.execute('INSERT INTO observations VALUES (?,?,?,?,?,?,?,?)',tuple(row[k] for k in ('game_id','faction','player_count','elo','layout','auction','faction_variant'))+(json.dumps(row,separators=(',',':')),))
@@ -73,6 +90,8 @@ def build(csvs, destination):
                             catalog['advanced_technologies'].update(t for s,t in row['technologies'].items() if s.startswith('adv-'))
                         accepted+=1;records+=len(rows)
                 counts[count]={'accepted_games':accepted,'rejected_games':rejected,'records':records,'sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest()}
+            db.execute('INSERT INTO metadata VALUES (?,?)', ('eligibility_policy', str(POLICY_VERSION)))
+            db.execute('INSERT INTO metadata VALUES (?,?)', ('excluded_game_ids', json.dumps(sorted(excluded))))
             db.execute('CREATE INDEX selection ON observations(player_count,faction,elo)')
             db.execute('INSERT INTO metadata VALUES (?,?)',('catalog',json.dumps({k:sorted(v) for k,v in catalog.items()})))
             db.execute('INSERT INTO metadata VALUES (?,?)',('imports',json.dumps(counts)))
@@ -83,21 +102,27 @@ def build(csvs, destination):
 
 
 def connect(path):
-    return sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True)
+    db = sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True)
+    try:
+        marker = db.execute("SELECT value FROM metadata WHERE key='eligibility_policy'").fetchone()
+        require_safe_policy(marker[0] if marker else None)
+        return db
+    except BaseException:
+        db.close()
+        raise
 
 
 def catalog(path):
-    with connect(path) as db:return json.loads(db.execute("SELECT value FROM metadata WHERE key='catalog'").fetchone()[0])
+    with connect(path) as db:
+        result = json.loads(db.execute("SELECT value FROM metadata WHERE key='catalog'").fetchone()[0])
+    result['faction_variant'] = [v for v in result.get('faction_variant', []) if v != EXCLUDED_FACTION_VARIANT]
+    return result
 
 
 def iter_rows(path,filters):
-    clauses=[];params=[]
-    for key in ('player_count','faction','layout','auction','faction_variant'):
+    clauses=[BASE_ELIGIBLE_SQL];params=[]
+    for key in ('player_count','layout','auction','faction_variant'):
         if filters.get(key):clauses.append(key+' = ?');params.append(filters[key])
-    if filters.get('min_elo'):
-        value=number(filters['min_elo'])
-        if value is None:raise ValueError('Pregame Elo minimum must be finite')
-        clauses.append('elo >= ?');params.append(value)
     sql='SELECT payload FROM observations'+(' WHERE '+' AND '.join(clauses) if clauses else '')+' ORDER BY game_id,faction'
     from contextlib import closing
     with closing(connect(path)) as db:
@@ -105,7 +130,7 @@ def iter_rows(path,filters):
             yield json.loads(record[0])
 
 
-SCOPE = 'Historical base CSV cohort; dropped games excluded; unknown variant values remain unknown'
+SCOPE = 'Historical base CSV cohort; dropped, more-balanced and any final-score-below-100 games excluded; unknown variant values remain unknown'
 
 
 def batches(path, filters, size=1024):

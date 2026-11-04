@@ -4,9 +4,11 @@ from gaia_stats.corrected_plots import observations, mean_score, pair_mean
 from gaia_stats.legacy_plots import make_plot
 
 
-def game(score=100, other=90, dropped=False, identifier='g'):
-    return {'id':identifier,'num_players':2,'pos_1_faction':'terrans','pos_2_faction':'xenos',
+def game(score=100, other=100, dropped=False, identifier='g'):
+    result = {'id':identifier,'num_players':2,'pos_1_faction':'terrans','pos_2_faction':'xenos',
             'pos_1_score':score,'pos_2_score':other,'pos_1_dropped':False,'pos_2_dropped':dropped,
+            'score_source_layout':'player-position-v1','pos_1_bid':20,'pos_2_bid':0,
+            'pos_1_tech_score':score-70,'pos_2_tech_score':other-78,
             'pos_1_elo':150,'pos_2_elo':250,'pos_1_score_bid':-20,'pos_2_score_bid':0,
             'tech_terra':'a','tech_adv-terra':'b','pos_1_tech_taken_a':True,'pos_2_tech_taken_a':False,
             'pos_1_adv_tech_taken_b':True,'pos_2_adv_tech_taken_b':False,
@@ -14,16 +16,17 @@ def game(score=100, other=90, dropped=False, identifier='g'):
             'pos_1_score_final1':18,'pos_1_score_final2':12,'pos_2_score_final1':12,'pos_2_score_final2':6,
             **{f'round_{i}_scoring':'roundtile' for i in range(1,7)},
             **{f'pos_{p}_score_round{i}':10 for p in (1,2) for i in range(1,7)}}
+    return result
 
 
 class CorrectedPlotTests(unittest.TestCase):
     def test_weighted_mean_unequal_rank_cells(self):
         games=[game(identifier=str(i)) for i in range(9)]+[game(200,210,identifier='last')]
         rows=[r for r in observations(pd.DataFrame(games),2) if r['faction']=='terrans']
-        self.assertEqual(mean_score(rows),(110,10))
+        self.assertEqual(mean_score(rows),(130,10))
         for kind in ('basic-tech-score','advanced-tech-score'):
             fig=make_plot(kind,pd.DataFrame(games),players=2,faction='terrans')
-            self.assertEqual(fig.data[0].x[0],110)
+            self.assertEqual(fig.data[0].x[0],130)
             self.assertEqual(int(fig.data[0].text[0]),10)
 
     def test_single_pair_and_reversed_order_pool_once(self):
@@ -35,7 +38,7 @@ class CorrectedPlotTests(unittest.TestCase):
         self.assertIsNone(fig.data[0].z[0][0])
 
     def test_ties_invariant_under_position_reordering(self):
-        row=game(100,100); other=dict(row)
+        row=game(100,120); other=dict(row)
         for key in list(row):
             if key.startswith('pos_1_'):other[key]=row[key.replace('pos_1_','pos_2_')]
             elif key.startswith('pos_2_'):other[key]=row[key.replace('pos_2_','pos_1_')]
@@ -63,7 +66,7 @@ class CorrectedPlotTests(unittest.TestCase):
         row=game(100,110)
         data=pd.DataFrame([row]);rows=observations(data,2,min_elo=200)
         self.assertEqual([r['faction'] for r in rows],['xenos'])
-        self.assertEqual(rows[0]['win_share'],1)
-        self.assertEqual(observations(data,2)[0]['rank'],2) # bid restored would incorrectly win
+        self.assertEqual(rows[0]['win_share'],0)
+        self.assertEqual(observations(data,2)[0]['rank'],1) # Auction points are excluded
         fig=make_plot('advanced-tech-score',data,players=2,faction='terrans',min_elo=200)
         self.assertEqual(len(fig.data),0)

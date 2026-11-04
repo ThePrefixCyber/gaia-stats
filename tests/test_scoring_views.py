@@ -29,7 +29,7 @@ class ScoringViewsTests(unittest.TestCase):
         lookup={(c['label'],c['player_count'],c['rank']):c for c in result['rank_cells']}
         self.assertEqual(lookup['fed',4,1]['values'],[20,10])
         self.assertEqual(lookup['charge',4,1]['values'],[-4,0])
-        self.assertEqual(lookup['bid',4,1]['values'],[-10,0])
+        self.assertFalse(any(label == 'bid' for label, _, _ in lookup))
         self.assertEqual(lookup['round',4,1]['values'],[42,0])
         self.assertEqual(lookup['final',4,1]['values'],[0,15])
         self.assertEqual(lookup['fed',4,2]['values'],[30])

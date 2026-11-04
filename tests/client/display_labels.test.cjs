@@ -46,3 +46,11 @@ test('historical comparison wizard uses display labels with original distinct op
   w.openComparisonWizard(['4'],'4');assertClean(w.document);
  }finally{dom.window.close();}
 });
+
+test('classic pre-bid competition rank legends are never relabeled as VP sources',()=>{
+ const dom=harness('<div class="js-plotly-plot"></div>'),w=dom.window,g=w.document.querySelector('div'),updates=[];
+ g.data=[1,2,3,4].map(rank=>({x:['research'],y:[rank],name:`pre-bid-score rank ${rank}`}));
+ w.Plotly={restyle:(graph,update)=>updates.push(update),relayout:()=>{}};
+ try{w.GaiaTiles.legacy('point-sources');for(const update of updates)assert.equal(update.name,undefined);}
+ finally{w.close();}
+});
