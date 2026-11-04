@@ -160,6 +160,39 @@ class CohortBrowserTests(unittest.TestCase):
         self.assertIn('No observations', self.page.locator('#chart').inner_text())
         self.assertIn('min_elo=99999', self.page.locator('#csv').get_attribute('href'))
 
+    def test_loading_overlay_preserves_chart_in_fullscreen_and_dismisses_on_error(self):
+        self.open()
+        gate = self.elo_gates['200'] = threading.Event()
+        self.page.fill('[name=min_elo]', '200')
+        self.page.click('#filters button')
+        self.page.click('#chart-focus')
+        self.assertTrue(self.page.locator('#chart-loading').is_visible())
+        self.assertGreater(self.page.locator('#chart .plot-container').count(), 0)
+        self.assertEqual(self.page.locator('#chart').get_attribute('aria-busy'), 'true')
+        self.assertTrue(self.page.locator('#chart-frame').evaluate('(node) => node.inert'))
+        self.assertIn('Updating chart', self.page.locator('#chart-loading-status').inner_text())
+        self.assertEqual(self.page.locator('#status').inner_text(), '')
+        for viewport in ({'width': 1280, 'height': 1000}, {'width': 390, 'height': 844}):
+            self.page.set_viewport_size(viewport)
+            stage = self.page.locator('#chart-stage').bounding_box()
+            overlay = self.page.locator('#chart-loading').bounding_box()
+            spinner = self.page.locator('.chart-spinner').bounding_box()
+            for key in ('x', 'y', 'width', 'height'):
+                self.assertAlmostEqual(stage[key], overlay[key], delta=1)
+            self.assertAlmostEqual(spinner['x'] + spinner['width'] / 2, stage['x'] + stage['width'] / 2, delta=1)
+            self.assertAlmostEqual(spinner['y'] + spinner['height'] / 2, stage['y'] + stage['height'] / 2, delta=1)
+        self.page.emulate_media(reduced_motion='reduce')
+        self.assertEqual(self.page.locator('.chart-spinner').evaluate('(node) => getComputedStyle(node).animationName'), 'none')
+        gate.set()
+        self.page.locator('#chart-loading').wait_for(state='hidden')
+        self.assertEqual(self.page.locator('#chart').get_attribute('aria-busy'), 'false')
+        self.page.keyboard.press('Escape')
+        self.fail_stats = True
+        self.page.click('#filters button')
+        self.page.wait_for_function("document.getElementById('status').textContent.includes('Temporary test failure')")
+        self.assertFalse(self.page.locator('#chart-loading').is_visible())
+        self.assertFalse(self.page.locator('#chart-frame').evaluate('(node) => node.inert'))
+
     def test_invalid_elo_cancels_pending_work_before_native_submit_validation(self):
         self.open()
         for submit in ('click', 'requestSubmit'):
@@ -173,6 +206,7 @@ class CohortBrowserTests(unittest.TestCase):
             else:
                 self.page.locator('#filters').evaluate('(form) => form.requestSubmit()')
             self.assertEqual(self.page.locator('#chart').get_attribute('aria-busy'), 'false')
+            self.assertFalse(self.page.locator('#chart-loading').is_visible())
             self.assertIn('positive whole-number Elo', self.page.locator('#status').inner_text())
             self.assertTrue(self.page.locator('#elo-error').is_visible())
             self.assertTrue(self.page.locator('[name=min_elo]').evaluate('(field) => Boolean(field.validationMessage)'))

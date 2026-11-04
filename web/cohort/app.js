@@ -6,7 +6,14 @@ let result=null, generation=0, memories={};
 let requestController=null, pendingKey=null, comparisonSignature=null, plotlyFailed=false;
 let cachedCohort=null, loadedMode=null;
 const responses=new Map(), RESPONSE_TTL=60_000;
-function cancelRequest(){if(requestController)requestController.abort();requestController=null;pendingKey=null;}
+function setChartLoading(active,announcement=''){
+ el('chart').setAttribute('aria-busy',String(active));
+ el('chart-loading').hidden=!active;
+ // Keep old pixels visible, but don't allow interaction with stale chart data.
+ el('chart-frame').inert=active;
+ el('chart-loading-status').textContent=announcement;
+}
+function cancelRequest(){if(requestController)requestController.abort();requestController=null;pendingKey=null;setChartLoading(false);}
 function cacheKey(q){const key=new URLSearchParams(q);key.sort();return key.toString();}
 function cachedResponse(q){
  const key=cacheKey(q),kind=q.get('plot');
@@ -30,9 +37,10 @@ function validateElo(){const field=form.elements.min_elo;const valid=field.value
 function rejectInvalidElo(){
  // Native constraint validation may prevent submit entirely. Invalidate pending
  // work from input/invalid events too, before a late response can restore it.
- cancelRequest();++generation;el('chart').setAttribute('aria-busy','false');el('csv').removeAttribute('href');
+ cancelRequest();++generation;el('csv').removeAttribute('href');
  el('status').textContent='Enter a positive whole-number Elo, or leave this field empty.'+(result?' Previous results remain visible.':'');
  if(!result)el('chart').textContent='Correct the Elo field, then apply filters to load the chart.';
+ setChartLoading(false,el('status').textContent);
 }
 function onEloInput(){if(!validateElo())rejectInvalidElo();}
 function query(){syncVariantControl();syncLayoutControl();const q=new URLSearchParams(new FormData(form));q.set('ruleset',el('mode').value);q.set('plot',el('plot').value);for(const [key,value] of [...q])if(value==='')q.delete(key);return q;}
@@ -171,7 +179,7 @@ if(window.Plotly){
  // react preserves Plotly's DOM and listeners instead of tearing down every view.
  if(!el('chart').data)el('chart').replaceChildren();
  const rendered=result,current=generation;
- Plotly.react(el('chart'),traces,layout,{responsive:true,displaylogo:false}).catch(()=>{if(result!==rendered||current!==generation)return;Plotly.purge(el('chart'));el('chart').textContent='Chart unavailable; exact observations are available in the table.';});
+ return Plotly.react(el('chart'),traces,layout,{responsive:true,displaylogo:false}).catch(()=>{if(result!==rendered||current!==generation)return;Plotly.purge(el('chart'));el('chart').textContent='Chart unavailable; exact observations are available in the table.';});
 }else el('chart').textContent=plotlyFailed?'Plot library unavailable; exact observations are available in the table.':'Loading chart library… Exact observations are already available in the table.';
 }
 function renderResult(data,q){
@@ -185,7 +193,7 @@ function renderResult(data,q){
  table(el('comparison'),data.comparisons,['faction','samples','games','mean_score','mean_rank','win_share']);for(const [kind,target,keys] of [['rounds','round-comparison',[1,2,3,4,5,6].map(i=>'round'+i)],['finals','final-comparison',['final1','final2']],['technologies','tech-comparison',['adv-terra','adv-nav','adv-int','adv-gaia','adv-eco','adv-sci','adv-ext']]]){table(el(target),data.setup_comparisons[kind],['faction','samples',...keys]);}
  comparisonSignature=signature;
  }
- draw();
+ return draw();
 }
 async function update({refresh=false}={}){
  // A failed/interrupted catalog leaves no valid form for the selected mode.
@@ -199,24 +207,24 @@ async function update({refresh=false}={}){
  const nextCohort=cacheKey(cohort);
  if(refresh||cachedCohort!==nextCohort){responses.clear();cachedCohort=nextCohort;}
  const cached=cachedResponse(q);
- if(cached){el('chart').setAttribute('aria-busy','false');renderResult(cached,q);return;}
+ if(cached){await renderResult(cached,q);if(current===generation)setChartLoading(false,el('status').textContent);return;}
  requestController=new AbortController();const signal=requestController.signal;pendingKey=key;
- el('status').textContent=result?'Updating… Previous results remain visible until the selection is ready.':'Loading…';
- el('chart').setAttribute('aria-busy','true');el('csv').removeAttribute('href');
+ el('status').textContent='';
+ setChartLoading(true,result?'Updating chart…':'Loading chart…');el('csv').removeAttribute('href');
  try{
   const response=await fetch('/cohort/api/stats?'+q,{signal}),data=await response.json();
   if(!response.ok)throw Error(data.error||'Request failed');
   if(current!==generation)return;
   responses.set(key,{time:Date.now(),data});
   while(responses.size>8)responses.delete(responses.keys().next().value);
-  renderResult(data,q);
+  await renderResult(data,q);
  }catch(error){
   if(current!==generation||error.name==='AbortError')return;
   result=null;comparisonSignature=null;el('status').textContent=error.message;
   for(const id of ['comparison','round-comparison','final-comparison','tech-comparison','metrics'])el(id).replaceChildren();
   if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent='Unavailable';el('csv').removeAttribute('href');
  }finally{
-  if(current===generation){requestController=null;pendingKey=null;el('chart').setAttribute('aria-busy','false');}
+  if(current===generation){requestController=null;pendingKey=null;setChartLoading(false,el('status').textContent);}
  }
 }
 form.onsubmit=e=>{e.preventDefault();update({refresh:true});};el('plot').onchange=()=>update();form.elements.faction.onchange=()=>update();form.elements.player_count.onchange=syncVariantControl;form.elements.min_elo.oninput=onEloInput;form.elements.min_elo.oninvalid=onEloInput;
@@ -226,11 +234,11 @@ el('frequency-view').onchange=()=>{save();draw();};
 el('mode').onchange=()=>{save();try{sessionStorage.setItem('gaia-cohort-mode',el('mode').value);}catch{}loadMode();};
 async function loadMode(){
  cancelRequest();responses.clear();cachedCohort=null;comparisonSignature=null;loadedMode=null;
- form.querySelector('fieldset').disabled=true;form.elements.faction.disabled=true;el('plot').disabled=true;el('chart').setAttribute('aria-busy','true');
+ form.querySelector('fieldset').disabled=true;form.elements.faction.disabled=true;el('plot').disabled=true;setChartLoading(true,'Loading game mode…');
  requestController=new AbortController();const signal=requestController.signal;
- const mode=el('mode').value,current=++generation;history.replaceState(null,'','?ruleset='+mode);result=null;el('status').textContent='Loading mode…';el('csv').removeAttribute('href');
+ const mode=el('mode').value,current=++generation;history.replaceState(null,'','?ruleset='+mode);result=null;el('status').textContent='';el('csv').removeAttribute('href');
  for(const id of ['comparison','round-comparison','final-comparison','tech-comparison','metrics'])el(id).replaceChildren();
- if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent='Loading…';
+ if(!el('chart').hasChildNodes())el('chart').textContent='Loading…';
  try{
   const response=await fetch('/cohort/api/catalog?ruleset='+mode,{signal});const catalog=await response.json();if(!response.ok)throw Error(catalog.error||'Catalog unavailable');if(current!==generation)return;
   form.reset();el('rounds').replaceChildren();el('techs').replaceChildren();
@@ -242,7 +250,7 @@ async function loadMode(){
   el('plot').value=names[saved.plot]?saved.plot:'advanced-tech-frequency';
   el('frequency-view').value=saved.frequency_view==='position'?'position':'tile';
   syncVariantControl();syncLayoutControl();loadedMode=mode;form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;await update();
- }catch(error){if(current===generation&&error.name!=='AbortError'){el('status').textContent=error.message;el('chart').textContent='Unavailable';el('chart').setAttribute('aria-busy','false');form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;}}
+ }catch(error){if(current===generation){el('status').textContent=error.name==='AbortError'?'Loading cancelled. Apply filters to retry.':error.message;el('chart').textContent='Unavailable';setChartLoading(false,el('status').textContent);form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;}}
 }
 const focusButton=el('chart-focus');
 function focusChart(active){for(const child of document.querySelector('main').children){if(child!==el('chart-panel'))child.inert=active;}document.body.classList.toggle('chart-focus',active);focusButton.textContent=active?'Exit chart view':'Expand chart';focusButton.setAttribute('aria-pressed',String(active));draw();focusButton.focus();}

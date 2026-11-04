@@ -468,7 +468,7 @@ test('native invalid input, Apply click and requestSubmit cancel pending respons
    else h.get('filters').requestSubmit();
    await tick();await tick();
    assert.equal(submits,0,action+' should be stopped by native validation');
-   assert.equal(stale.signal.aborted,true,action);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');
+   assert.equal(stale.signal.aborted,true,action);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');assert.equal(h.get('chart-loading').hidden,true);assert.equal(h.get('chart-frame').inert,false);
    const requests=h.requests.length;assert.match(h.get('status').textContent,/positive whole-number Elo/);assert.equal(h.get('csv').getAttribute('href'),null);assert.equal(h.get('elo-error').hidden,false);assert.ok(field.validationMessage);
    stale.resolve();await tick();await tick();
    assert.equal(h.w.testClient.getResult(),previous);assert.equal(h.draws.length,draws);assert.equal(h.requests.length,requests);assert.equal(h.get('csv').getAttribute('href'),null);assert.match(h.get('status').textContent,/positive whole-number Elo/);
@@ -500,4 +500,66 @@ test('point-source shorthand never merges distinct raw categories', async()=>{
   assert.deepEqual(traces.map(t=>t.median[0]),[10,11]);
   assert.ok(traces.every(t=>t.name==='Research'&&!t.hovertemplate.includes('%{x}')));
  }finally{h.close();}
+});
+
+test('loading overlay preserves the previous plot until fetching and rendering finish',async()=>{
+ const h=await harness({controlled:true});
+ try{
+  const loading=active=>{assert.equal(h.get('chart-loading').hidden,!active);assert.equal(h.get('chart-frame').inert,active);assert.equal(h.get('chart').getAttribute('aria-busy'),String(active));};
+  loading(true);assert.match(h.get('chart-loading-status').textContent,/Loading chart/);
+  await h.flush();loading(false);
+  const previous=h.get('chart').data,child=h.w.document.createElement('span');child.textContent='Previous plot pixels';h.get('chart').append(child);
+  h.get('filters').elements.min_elo.value='200';h.get('filters').requestSubmit();await tick();
+  loading(true);assert.equal(h.get('chart').data,previous);assert.equal(child.parentElement,h.get('chart'));assert.equal(h.get('status').textContent,'');
+  assert.equal(h.get('chart-loading-status').getAttribute('role'),'status');assert.match(h.get('chart-loading-status').textContent,/Updating chart/);
+  let finish;h.w.Plotly.react=()=>new Promise(resolve=>{finish=resolve;});
+  await h.flush();loading(true);finish();await tick();loading(false);
+  assert.match(h.get('chart-loading-status').textContent,/ games · /);
+ }finally{h.close();}
+});
+
+test('only the current request can remove the loading overlay; cached and invalid selections clear it',async()=>{
+ const h=await harness({controlled:true});
+ try{
+  await h.flush();await h.apply();const stale=h.pending.shift();
+  await h.select('plot','round-one-structures');const latest=h.pending.shift();
+  stale.resolve();await tick();await tick();assert.equal(h.get('chart-loading').hidden,false);assert.equal(h.get('chart-frame').inert,true);
+  latest.resolve();await tick();await tick();assert.equal(h.get('chart-loading').hidden,true);
+  await h.select('plot','point-sources');const superseded=h.pending.shift();
+  await h.select('plot','round-one-structures');assert.equal(superseded.signal.aborted,true);assert.equal(h.get('chart-loading').hidden,true);
+  superseded.resolve();await tick();await tick();assert.equal(h.get('chart-loading').hidden,true);
+  await h.apply();const invalidated=h.pending.shift();h.get('filters').elements.min_elo.value='0';h.get('filters').querySelector('button').click();
+  assert.equal(h.get('chart-loading').hidden,true);assert.equal(h.get('chart-frame').inert,false);assert.match(h.get('chart-loading-status').textContent,/positive whole-number Elo/);
+  invalidated.resolve();await tick();await tick();assert.equal(h.get('chart-loading').hidden,true);
+ }finally{h.close();}
+});
+
+test('API, network, rendering and catalog errors always dismiss the overlay and allow retry',async()=>{
+ const h=await harness({controlled:true,controlledCatalog:true});
+ const originalReact=h.plots.react;
+ const resolveCatalog=async()=>{h.catalogs.shift().resolve();await tick();await tick();};
+ try{
+  await resolveCatalog();await h.flush();
+  for(const failure of ['api','network','abort','render']){
+   await h.apply();assert.equal(h.get('chart-loading').hidden,false);
+   const request=h.pending.shift();
+   if(failure==='api'){h.setFailures(true);request.resolve();}
+   else if(failure==='network'||failure==='abort'){request.reject(Object.assign(new Error('Network failed'),{name:failure==='abort'?'AbortError':'Error'}));}
+   else{h.w.Plotly.react=()=>Promise.reject(new Error('Rendering failed'));request.resolve();}
+   await tick();await tick();assert.equal(h.get('chart-loading').hidden,true,failure);assert.equal(h.get('chart-frame').inert,false,failure);
+   h.setFailures(false);h.w.Plotly.react=originalReact;await h.apply();await h.flush();assert.match(h.get('status').textContent,/ games · /);
+  }
+  await h.select('mode','lost-fleet');assert.equal(h.get('chart-loading').hidden,false);h.setFailures(true);await resolveCatalog();
+  assert.equal(h.get('chart-loading').hidden,true);assert.equal(h.get('chart-frame').inert,false);assert.equal(h.get('chart-loading-status').textContent,'Temporary failure');
+  h.setFailures(false);await h.apply();await resolveCatalog();await h.flush();assert.equal(h.get('chart-loading').hidden,true);
+ }finally{h.close();}
+});
+
+test('spinner lives inside fullscreen chart workspace and respects reduced motion',()=>{
+ assert.match(html,/id="chart-loading" hidden aria-hidden="true"/);
+ const css=readFileSync('web/cohort/styles.css','utf8');
+ assert.match(css,/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.chart-spinner\s*\{ animation: none;/);
+ assert.match(css,/body\.chart-focus #chart-stage \{ flex: 1; min-height: 0;/);
+ const dom=new JSDOM(html);
+ try{assert.ok(dom.window.document.querySelector('#chart-panel #chart-stage #chart-loading'));assert.ok(dom.window.document.querySelector('#chart-panel #chart-loading-status'));}finally{dom.window.close();}
 });

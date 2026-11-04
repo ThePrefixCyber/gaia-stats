@@ -93,7 +93,8 @@ main { max-width: none; }
 body.chart-focus { overflow: hidden; }
 body.chart-focus #chart-panel { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; }
 body.chart-focus #chart-panel .results-toolbar { flex: none; }
-body.chart-focus #chart-frame { flex: 1; min-height: 0; }
+body.chart-focus #chart-stage { flex: 1; min-height: 0; }
+body.chart-focus #chart-frame { height: 100%; }
 body.chart-focus #chart-panel #csv { display: none; }
 #tile-key { overflow-wrap: anywhere; }
 @media(max-width:640px) { #chart-panel .results-toolbar { flex-direction: row; align-items: center; gap:8px; } #chart-panel .results-toolbar label { flex: 1 1 180px; } }
@@ -104,3 +105,10 @@ body.chart-focus #chart-panel #csv { display: none; }
 #elo-help, #elo-error { font-size: .75rem; font-weight: 400; }
 #elo-error { color: #9f1239; }
 input[aria-invalid="true"] { border-color: #9f1239; }
+
+/* Cover stale chart pixels without clearing the plot or its scroll position. */
+#chart-stage { position: relative; isolation: isolate; }
+#chart-loading { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; background: rgb(211 218 226 / 72%); cursor: progress; }
+.chart-spinner { width: 48px; height: 48px; border: 5px solid #fff; border-top-color: #234c70; border-radius: 50%; box-shadow: 0 0 0 1px rgb(35 76 112 / 20%); animation: chart-spin .85s linear infinite; }
+@keyframes chart-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .chart-spinner { animation: none; } }
