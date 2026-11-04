@@ -2,6 +2,10 @@
 
 This is a review-branch design, not a claim that production has been migrated.
 The separate LF-only collector hotfix can run on the old release format first.
+This branch declares deployment contract version 2. An older guard rejects it;
+install and review the updated standalone guard before activation. Version 2
+checks exact base payload equality against the original seed minus exclusions,
+not only counts or a source label.
 Never promote the bundled scoring/artwork changes without the deployment guard
 and reviewed paired-data preparation described in `PREBID_ROLLOUT.md`.
 

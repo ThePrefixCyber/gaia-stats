@@ -128,7 +128,7 @@ The preparation tool:
   LF no-loss and verified-exclusion safeguards remain active.
 - Preserves raw observations, rebuilds historical CSV scoring from aligned bids,
   incrementally stores verified LF games and rebuilds classic charts in the new
-  cache. Existing indexed LF objects are copied into the independent new store.
+  cache. Only selected indexed LF objects are copied into the independent new store.
 - Verifies every serving score/rank/win and all artifact versions/hashes.
   Unknown CSV score provenance blocks readiness. Unknown archived base-only
   records do not need to be imported into the static CSV dataset.

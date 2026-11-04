@@ -9,7 +9,7 @@ it does not claim pixel-perfect reproduction of Tim's site.
 The public deployment is [http://45.76.250.100](http://45.76.250.100).
 As of **2026-11-02 09:22 UTC**, the rebuilt application, GitHub-polling code
 updates and scheduled cursor-based archive refresh were verified running.
-Historical base-game backfill is incomplete; this code stops its collection.
+Base collection is stopped. This branch stages the CSV-only source transition.
 Use `/healthz` for current release counts, discovery checkpoints and refresh status
 rather than treating
 this README as a live inventory. HTTPS and off-server backups are not established.
