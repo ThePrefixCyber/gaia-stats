@@ -22,7 +22,7 @@ function cachedResponse(q){
 }
 try{memories=JSON.parse(sessionStorage.getItem('gaia-cohort-filters')||'{}');}catch{}
 const initialMode=new URLSearchParams(location.search).get('ruleset');if(['base','lost-fleet'].includes(initialMode))el('mode').value=initialMode;
-function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;memories[loadedMode]={...Object.fromEntries(new FormData(form)),plot:el('plot').value};try{sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));}catch{}}
+function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;memories[loadedMode]={...Object.fromEntries(new FormData(form)),plot:el('plot').value,frequency_view:el('frequency-view').value};try{sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));}catch{}}
 function query(){const q=new URLSearchParams(new FormData(form));q.set('ruleset',el('mode').value);q.set('plot',el('plot').value);for(const [key,value] of [...q])if(value==='')q.delete(key);return q;}
 function table(target,rows,columns,options){GaiaTables.render(target,rows,columns,options);}
 // Keep zero meaningful instead of allowing Plotly to stretch the observed minimum
@@ -53,7 +53,31 @@ function treemapScoreStyle(values){
  marker.colorbar.tickvals=[...(low<0?[low,low/2]:[]),0,...(high>0?[high/4,high/2,3*high/4,high]:[])];
  return {marker,note:'Color: grey = 0 VP.'+(high>0?' Very dark blue = the highest mean net VP shown.':'')+(low<0?' Rust indicates negative mean net VP.':'')};
 }
-function draw(){if(!result)return;const kind=el('plot').value,p=result.plots[kind];if(!p)return;const cells=p.cells;el('note').textContent=p.note+` ${p.unavailable_records} records unavailable for this metric.`;const columns=kind==='point-sources'?['label','samples','median','q1','q3']:kind.includes('tech-')?['label','samples','available','frequency','mean_score','mean_rank']:(kind==='round-scoring'||kind==='final-scoring')?['label','games','samples','score_samples','mean_score','mean_final_score','win_share',...(kind==='final-scoring'?['score_baseline','score_baseline_samples','score_difference','win_baseline','win_baseline_samples','win_difference']:[])]:['label','samples','mean_score','mean_rank','win_share'];table(el('metrics'),cells,columns,{kind,labels:{mean_score:p.value_label}});
+// Match Tim's root → highest structure class → exact six-count configuration.
+// Parents carry totals, and their score/Elo colors are observation-weighted.
+function openingTree(cells,rootLabel){
+ const nodes=[],classes=new Map();
+ const summarize=(id,label,parent,group)=>{
+  const samples=group.reduce((sum,c)=>sum+c.samples,0);
+  const scored=group.filter(c=>Number.isFinite(c.mean_score));
+  const scoreN=scored.reduce((sum,c)=>sum+c.samples,0);
+  const rated=group.filter(c=>Number.isFinite(c.mean_elo)&&c.mean_elo_n>0);
+  const eloN=rated.reduce((sum,c)=>sum+c.mean_elo_n,0);
+  return {id,label,parent,samples,
+   mean_score:scoreN?scored.reduce((sum,c)=>sum+c.mean_score*c.samples,0)/scoreN:null,
+   mean_elo:eloN?rated.reduce((sum,c)=>sum+c.mean_elo*c.mean_elo_n,0)/eloN:null,mean_elo_n:eloN};
+ };
+ nodes.push(summarize('opening-root',rootLabel,'',cells));
+ for(const cell of cells){const group=classes.get(cell.structure_class)||[];group.push(cell);classes.set(cell.structure_class,group);}
+ const labels={PI:'PI',ac1:'Academy 1',ac2:'Academy 2',lab:'Lab',ts:'TS',m:'Mines'};
+ for(const [category,group] of [...classes].sort(([a],[b])=>a.localeCompare(b))){
+  const parent='opening-class/'+category;
+  nodes.push(summarize(parent,labels[category]||category,'opening-root',group));
+  for(const cell of group)nodes.push({id:'opening-leaf/'+cell.label,label:cell.label,parent,...cell});
+ }
+ return nodes;
+}
+function draw(){if(!result)return;const kind=el('plot').value,p=result.plots[kind];if(!p)return;const frequency=kind.endsWith('frequency'),byPosition=el('frequency-view').value==='position';el('frequency-view-label').hidden=!frequency;const cells=frequency&&!byPosition?(p.tile_cells??p.cells):p.cells;el('note').textContent=p.note+` ${p.unavailable_records} records unavailable for this metric.`;const columns=kind==='point-sources'?['label','samples','median','q1','q3']:kind.includes('tech-')?['label','samples','available','frequency','mean_score','mean_rank']:(kind==='round-scoring'||kind==='final-scoring')?['label','games','samples','score_samples','mean_score','mean_final_score','win_share',...(kind==='final-scoring'?['score_baseline','score_baseline_samples','score_difference','win_baseline','win_baseline_samples','win_difference']:[])]:['label','samples','mean_score','mean_rank','win_share'];table(el('metrics'),cells,columns,{kind,labels:{mean_score:p.value_label}});
 if(!cells.length){if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent=p.selection_required==='faction'?'Choose a faction above to compare final-scoring tile pairs. Pooling all players produces fixed prize-pool averages.':'No observations available for this selection.';return;}
 let traces=[],layout={margin:{b:180,t:40},title:names[kind],yaxis:{title:p.value_label,automargin:true},xaxis:{automargin:true},showlegend:true};
 if(kind==='point-sources'){traces=cells.map(c=>({type:'box',name:GaiaTiles.metric(kind,c.label),q1:[c.q1],median:[c.median],q3:[c.q3],lowerfence:[c.lower],upperfence:[c.upper],hovertext:'n='+c.samples}));layout.yaxis.title='VP contribution (signed)';el('note').textContent+=' Boxes: quartiles, with min/max whiskers.';}
@@ -74,12 +98,31 @@ else if(kind==='final-scoring'){
 }
 else if(kind==='round-scoring'){const xs=[...new Set(cells.map(c=>c.x))],ys=[...new Set(cells.map(c=>c.y))],lookup=new Map(cells.map(c=>[JSON.stringify([c.x,c.y]),c]));traces=['mean_score','win_share'].map((metric,index)=>({type:'heatmap',x:xs,y:ys,z:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c&&c[metric]!=null?c[metric]*(index?100:1):null;})),text:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c?`${GaiaTiles.metric(kind,c.label)}<br>n=${index?c.samples:c.score_samples}`:'Unavailable';})),hovertemplate:'%{x} / %{y}<br>'+(index?'Shared wins (%)':p.value_label)+' %{z}<br>%{text}<extra></extra>',colorscale:'Blues',hoverongaps:false,xaxis:index?'x2':'x',yaxis:index?'y2':'y',colorbar:{x:index?1.02:.4,thickness:12}}));layout.margin.t=100;layout.title={text:names[kind],y:.98};layout.margin.l=120;layout.xaxis.domain=[0,.38];layout.xaxis2={domain:[.64,1],anchor:'y2',automargin:true};layout.yaxis.domain=[0,1];layout.yaxis2={domain:[0,1],anchor:'x2',automargin:true};layout.annotations=[{text:p.value_label,x:.18,y:1.06,xref:'paper',yref:'paper',showarrow:false},{text:'Shared wins (%)',x:.82,y:1.06,xref:'paper',yref:'paper',showarrow:false}];const category=kind==='round-scoring'?'round':'final';const axisLabels=values=>values.map(v=>category==='round'&&/^Round [1-6]$/.test(v)?v:GaiaTiles.label(category,v));for(const key of ['xaxis','xaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:xs,ticktext:axisLabels(xs)});for(const key of ['yaxis','yaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:ys,ticktext:axisLabels(ys)});layout.yaxis.title='Scoring tile';}
 
-else if(kind.endsWith('frequency')){traces=[1,2,3,4].map(rank=>({type:'bar',name:'Rank '+rank,x:cells.map(c=>GaiaTiles.metric(kind,c.label)),y:cells.map(c=>c.available?(c.rank_counts[rank]||0)/c.available:null),hovertext:cells.map(c=>`taken=${c.samples}; available=${c.available}`),hovertemplate:'%{x}<br>%{y}<br>%{hovertext}<extra></extra>'}));layout.barmode='stack';layout.yaxis.title='Acquisition frequency by final rank';}
-else if(kind==='round-one-structures'){
- const scoreStyle=treemapScoreStyle(cells.map(c=>c.mean_score));
- el('note').textContent+=' '+scoreStyle.note;
- traces=[{type:'treemap',labels:cells.map(c=>GaiaTiles.metric(kind,c.label)),parents:cells.map(()=>''),values:cells.map(c=>c.samples),marker:scoreStyle.marker,hovertext:cells.map(c=>`n=${c.samples}; mean net VP=${c.mean_score??'unavailable'}`),hovertemplate:'%{label}<br>%{hovertext}<extra></extra>'}];
+else if(kind.endsWith('frequency')){
+ const percent=value=>value==null?'Unavailable':(100*value).toFixed(1)+'%';
+ const baseline=result.filters.faction?'Faction overall':'Selected cohort overall';
+ traces=[1,2,3,4].map(rank=>({type:'bar',name:'Rank '+rank,
+  // Raw category keys stay distinct even when shortened display labels coincide.
+  x:cells.map(c=>c.label),y:cells.map(c=>c.available?(c.rank_counts[rank]||0)/c.available:null),
+  hovertext:cells.map(c=>`${GaiaTiles.metric(kind,c.label)}<br>Rank ${rank}<br>P(rank | taken): ${percent(c.samples?(c.rank_counts[rank]||0)/c.samples:null)}<br>P(taken and rank | available): ${percent(c.available?(c.rank_counts[rank]||0)/c.available:null)}<br>${baseline} P(rank): ${percent(result.samples?(result.rank_counts[rank]||0)/result.samples:null)}<br>Taken=${c.samples}; available=${c.available}; rank among taken=${c.rank_counts[rank]||0}; overall n=${result.samples}`),
+  hovertemplate:'%{hovertext}<extra></extra>'}));
+ const unplaced=cells.reduce((sum,c)=>sum+(c.unavailable_taken_n||0),0);
+ if(unplaced)el('note').textContent+=` ${unplaced} acquired-tile observations have no matching setup evidence and are excluded from rates.`;
+ layout.barmode='stack';layout.yaxis={...layout.yaxis,title:'Acquisition rate when available',tickformat:'.0%'};
+ layout.xaxis={...layout.xaxis,categoryorder:'total ascending',tickmode:'array',tickvals:cells.map(c=>c.label),ticktext:cells.map(c=>GaiaTiles.metric(kind,c.label))};
+ el('note').textContent+=' '+(byPosition?'Position breakdown: each bar conditions on the tile being in that position.':'One bar per tile, deduplicated across positions within each player-game.')+' Overall rank rates use all selected player-game observations; choose a player count for a consistent rank comparison. Unknown acquisitions or setup availability are not assumed.';
 }
+else if(kind==='round-one-structures'){
+ const rootLabel=result.filters.faction?'Round 1: '+result.filters.faction:'Round 1 structures';
+ const nodes=openingTree(cells,rootLabel),scoreStyle=treemapScoreStyle(nodes.map(c=>c.mean_score));
+ el('note').textContent+=' '+scoreStyle.note+' Nested as overall → structure class → exact counts (mines, TS, lab, PI, academy 1, academy 2). Click a branch to inspect it. Parent scores are sample-weighted.';
+ traces=[{type:'treemap',ids:nodes.map(c=>c.id),labels:nodes.map(c=>c.label),parents:nodes.map(c=>c.parent),
+  values:nodes.map(c=>c.samples),branchvalues:'total',marker:scoreStyle.marker,
+  hovertext:nodes.map(c=>`Player observations=${c.samples}; mean net VP=${c.mean_score==null?'Unavailable':c.mean_score.toFixed(2)}<br>Mean pregame Elo=${c.mean_elo==null?'Unavailable':c.mean_elo.toFixed(2)} (rated n=${c.mean_elo_n})`),
+  hovertemplate:'%{label}<br>%{hovertext}<extra></extra>'}];
+ layout.margin={t:50,l:25,r:25,b:25};
+}
+
 else {traces=[{type:'scatter',mode:'markers',name:'Mean net VP',y:cells.map(c=>GaiaTiles.metric(kind,c.label)),x:cells.map(c=>c.mean_score),hovertext:cells.map(c=>`n=${c.samples}; mean rank=${c.mean_rank??'unavailable'}`),hovertemplate:'%{y}<br>%{x} VP<br>%{hovertext}<extra></extra>'}];layout.xaxis.title=p.value_label;layout.yaxis.title='Technology / position';}
 el('chart').style.height=(layout.height||600)+'px';
 if(window.Plotly){
@@ -134,6 +177,7 @@ async function update({refresh=false}={}){
  }
 }
 form.onsubmit=e=>{e.preventDefault();update({refresh:true});};el('plot').onchange=()=>update();
+el('frequency-view').onchange=()=>{save();draw();};
 // The form still belongs to loadedMode when the selector changes. Never save
 // half-loaded or disabled fields under a newly selected mode.
 el('mode').onchange=()=>{save();loadMode();};
@@ -153,6 +197,7 @@ async function loadMode(){
   for(const key of ['lf_2p_4qic_mode','auction']){form.elements[key].disabled=mode==='base';form.elements[key].parentElement.hidden=mode==='base';}
   const saved=memories[mode]||{};for(const [key,value] of Object.entries(saved)){const field=form.elements[key];if(field&&!field.disabled){if(field.tagName!=='SELECT'||[...field.options].some(o=>o.value===value))field.value=value;}}
   el('plot').value=names[saved.plot]?saved.plot:'advanced-tech-frequency';
+  el('frequency-view').value=saved.frequency_view==='position'?'position':'tile';
   loadedMode=mode;form.querySelector('fieldset').disabled=false;el('plot').disabled=false;await update();
  }catch(error){if(current===generation&&error.name!=='AbortError'){el('status').textContent=error.message;el('chart').textContent='Unavailable';el('chart').setAttribute('aria-busy','false');form.querySelector('fieldset').disabled=false;el('plot').disabled=false;}}
 }

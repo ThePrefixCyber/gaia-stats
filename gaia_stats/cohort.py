@@ -15,6 +15,7 @@ from statistics import mean, quantiles
 from .analysis import normalize, select
 from .__main__ import atomic_json
 from .scoring import complete_ledger, tile_value
+from .chart_groups import technology_id, opening_configuration
 
 PLOTS = ('advanced-tech-frequency', 'advanced-tech-score', 'basic-tech-frequency',
          'basic-tech-score', 'round-one-structures', 'final-scoring',
@@ -118,7 +119,10 @@ def statistics(rows, kind):
     groups = defaultdict(list)
     opportunities = Counter()
     unavailable = 0
+    extra = {}
     if 'tech-' in kind:
+        tile_groups = defaultdict(list)
+        tile_opportunities, unplaced = Counter(), Counter()
         advanced = kind.startswith('advanced')
         for row in rows:
             owned = row.get('owned_technologies')
@@ -133,20 +137,43 @@ def statistics(rows, kind):
             for tech in {(t['tile'], t['slot']) for t in owned}:
                 if tech[1].startswith('adv-') == advanced:
                     groups[tech].append(row)
+            # A tile is one opportunity/acquisition per player-game, even if
+            # duplicate setup slots or duplicate/covered ownership records exist.
+            available_tiles = {technology_id(tile, advanced) for slot, tile in available.items()
+                               if slot.startswith('adv-') == advanced}
+            taken_tiles = {technology_id(t['tile'], advanced) for t in owned
+                           if t['slot'].startswith('adv-') == advanced}
+            tile_opportunities.update(available_tiles)
+            unplaced.update(taken_tiles - available_tiles)
+            for tile in taken_tiles & available_tiles:
+                tile_groups[tile].append(row)
         keys = sorted(set(groups) | set(opportunities))
         cells = [{'label': f'{tile} / {slot}', **summary(groups[(tile, slot)]),
                   'available': opportunities[(tile, slot)],
                   'frequency': len(groups[(tile, slot)]) / opportunities[(tile, slot)]
                   if opportunities[(tile, slot)] else None} for tile, slot in keys]
+        extra['tile_cells'] = [
+            {'label': tile, **summary(tile_groups[tile]), 'available': tile_opportunities[tile],
+             'frequency': len(tile_groups[tile]) / tile_opportunities[tile] if tile_opportunities[tile] else None,
+             'unavailable_taken_n': unplaced[tile]}
+            for tile in sorted(set(tile_opportunities) | set(unplaced))]
     elif kind == 'round-one-structures':
+        configurations = {}
         for row in rows:
-            structures = row.get('round_one_structures')
-            if structures is None:
+            configuration = opening_configuration(row.get('round_one_structures'))
+            if configuration is None:
                 unavailable += 1
                 continue
-            label = ', '.join(f'{key}: {value}' for key, value in sorted(structures.items()))
+            category, label, counts = configuration
+            configurations[label] = (category, counts)
             groups[label].append(row)
-        cells = [{'label': label, **summary(group)} for label, group in sorted(groups.items())]
+        cells = []
+        for label, group in sorted(groups.items()):
+            category, counts = configurations[label]
+            ratings = [row['elo'] for row in group if row['elo'] is not None]
+            cells.append({'label': label, 'structure_class': category, 'structures': counts,
+                          **summary(group), 'mean_elo': mean(ratings) if ratings else None,
+                          'mean_elo_n': len(ratings)})
     elif kind in ('round-scoring', 'final-scoring'):
         for row in rows:
             if kind == 'round-scoring':
@@ -195,7 +222,7 @@ def statistics(rows, kind):
                   'win difference uses this faction and player count across all pairs, relaxing final-tile filters only. '
                   'Both baselines retain ruleset, Elo and other selected settings. '
                   'Net-score shared wins split ties; these descriptive differences are not causal tile effects.') if kind=='final-scoring' else ''
-    return {'kind': kind, 'cells': cells, 'unavailable_records': unavailable,
+    return {'kind': kind, 'cells': cells, **extra, 'unavailable_records': unavailable,
             'value_label':value_label,
             'note': value_label+('; mean_final_score separately reports conditional final net VP' if kind in ('round-scoring','final-scoring') else '')+'. Net-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'+final_note}
 

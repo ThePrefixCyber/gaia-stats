@@ -51,7 +51,7 @@ async function harness({plotly=true, controlled=false, controlledCatalog=false, 
   };
   w.eval(readFileSync('web/cohort/tile-labels.js','utf8').replace('__TILE_REGISTRY__',readFileSync('web/cohort/tile-labels.json','utf8')));
   w.eval(readFileSync('web/cohort/tables.js','utf8'));
-  w.eval(script+'\nwindow.testClient={getResult:()=>result,getSize:()=>responses.size,expire:()=>{for(const entry of responses.values())entry.time-=RESPONSE_TTL+1;}};');
+  w.eval(script+'\nwindow.testClient={openingTree,getResult:()=>result,getSize:()=>responses.size,expire:()=>{for(const entry of responses.values())entry.time-=RESPONSE_TTL+1;}};');
   await tick();await tick();
   const get=id=>w.document.getElementById(id);
   const select=async(id,value)=>{get(id).value=value;get(id).dispatchEvent(new w.Event('change'));await tick();await tick();};
@@ -202,5 +202,53 @@ test('failed catalog can retry without saving the previous mode form', async()=>
     assert.equal(h.get('plot').value,'round-scoring');
     assert.equal(h.requests.at(-1).ruleset,'lost-fleet');
     assert.equal(h.requests.at(-1).min_elo,'200');
+  }finally{h.close();}
+});
+
+
+test('frequency default is one tile bar with all original hover probabilities', async()=>{
+  const h=await harness();
+  try{
+    const result=h.w.testClient.getResult(),plot=result.plots['advanced-tech-frequency'];
+    const traces=h.draws.at(-1),tile=plot.tile_cells[0];
+    assert.equal(traces[0].x.length,plot.tile_cells.length);
+    assert.equal(new Set(traces[0].x).size,plot.tile_cells.length);
+    assert.equal(traces[0].y[0],tile.available?(tile.rank_counts[1]||0)/tile.available:null);
+    assert.match(traces[0].hovertext[0],/P\(rank \| taken\)/);
+    assert.match(traces[0].hovertext[0],/P\(taken and rank \| available\)/);
+    assert.match(traces[0].hovertext[0],/Selected cohort overall P\(rank\)/);
+    assert.equal(h.get('chart').layout.yaxis.tickformat,'.0%');
+    assert.equal(h.get('chart').layout.xaxis.categoryorder,'total ascending');
+    assert.deepEqual(Array.from(h.get('chart').layout.xaxis.tickvals),Array.from(traces[0].x));
+    await h.select('frequency-view','position');
+    assert.equal(h.draws.at(-1)[0].x.length,plot.cells.length);
+    assert.equal(h.requests.length,1);
+    await h.select('frequency-view','tile');
+    assert.equal(h.draws.at(-1)[0].x.length,plot.tile_cells.length);
+    assert.equal(h.requests.length,1);
+  }finally{h.close();}
+});
+
+test('opening hierarchy has exact root/class/leaf totals and weighted parent means', async()=>{
+  const h=await harness();
+  try{
+    const cells=[{label:'2-m_0-ts_0-lab_1-pi_0-ac1_0-ac2',structure_class:'PI',samples:1,mean_score:100,mean_elo:100,mean_elo_n:1},
+                 {label:'3-m_0-ts_0-lab_1-pi_0-ac1_0-ac2',structure_class:'PI',samples:9,mean_score:200,mean_elo:300,mean_elo_n:3}];
+    const nodes=h.w.testClient.openingTree(cells,'Round 1');
+    const root=nodes.find(n=>n.parent===''),group=nodes.find(n=>n.parent===root.id);
+    assert.equal(root.samples,10);assert.equal(group.samples,10);
+    assert.equal(root.mean_score,190);assert.equal(group.mean_score,190);
+    assert.equal(root.mean_elo,250);assert.equal(root.mean_elo_n,4);
+    assert.equal(new Set(nodes.map(n=>n.id)).size,nodes.length);
+    assert.deepEqual(Array.from(nodes.filter(n=>n.parent===group.id),n=>n.samples),[1,9]);
+    await h.select('plot','round-one-structures');
+    const trace=h.draws.at(-1)[0];
+    assert.equal(trace.branchvalues,'total');
+    assert.equal(trace.parents.filter(p=>p==='').length,1);
+    for(let i=0;i<trace.ids.length;i++){
+      const children=trace.values.filter((v,j)=>trace.parents[j]===trace.ids[i]);
+      if(children.length)assert.equal(children.reduce((a,b)=>a+b,0),trace.values[i]);
+    }
+    assert.match(trace.hovertext[0],/Mean pregame Elo/);
   }finally{h.close();}
 });

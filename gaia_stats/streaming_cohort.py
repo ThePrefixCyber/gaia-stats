@@ -26,7 +26,7 @@ class Cell:
             elif key in ('samples', 'games', 'available', 'score_samples') or key.endswith('_n'):
                 self.value[key] = self.value.get(key, 0) + value
             elif key.startswith('mean_') or key == 'win_share' or (setup and key not in ('faction', 'samples') and not key.endswith('_n')):
-                weight_key = key + '_n' if setup else ('score_samples' if key == 'mean_score' and 'score_samples' in item else 'samples')
+                weight_key = key + '_n' if setup or key + '_n' in item else ('score_samples' if key == 'mean_score' and 'score_samples' in item else 'samples')
                 weight = item.get(weight_key, 0)
                 if value is not None and weight:
                     self.means[key].append(value * weight)
@@ -51,6 +51,7 @@ def statistics(batches, filters, scope):
     setup = {kind: defaultdict(Cell) for kind in ('rounds', 'finals', 'technologies')}
     plot_cells = defaultdict(lambda: defaultdict(Cell))
     plot_meta = {}
+    tile_cells = defaultdict(lambda: defaultdict(Cell))
     points = {}
     prior_complete = 0
     identifiers = []
@@ -68,9 +69,11 @@ def statistics(batches, filters, scope):
                 setup[kind][cell['faction']].add(cell, setup=True)
         for kind, plot in part['plots'].items():
             if kind not in plot_meta:
-                plot_meta[kind] = {k: v for k, v in plot.items() if k not in ('cells', 'unavailable_records')}
+                plot_meta[kind] = {k: v for k, v in plot.items() if k not in ('cells', 'tile_cells', 'unavailable_records')}
                 plot_meta[kind]['unavailable_records'] = 0
             plot_meta[kind]['unavailable_records'] += plot['unavailable_records']
+            for cell in plot.get('tile_cells', []):
+                tile_cells[kind][cell['label']].add(cell)
             if kind == 'point-sources':
                 # Only selected complete ledgers imply zeros for absent sources.
                 complete = sum(complete_ledger(row) for row in cohort({'rows': batch}, filters))
@@ -106,6 +109,8 @@ def statistics(batches, filters, scope):
         else:
             cells = [cell.finish() for _, cell in sorted(plot_cells[kind].items())]
         plots[kind] = {**meta, 'cells': cells}
+        if 'tech-' in kind:
+            plots[kind]['tile_cells'] = [cell.finish() for _, cell in sorted(tile_cells[kind].items())]
         if kind == 'final-scoring':
             plots[kind] = final_scoring_comparison(plots[kind], filters)
     return {'ruleset': filters['ruleset'], 'filters': filters, **total.finish(),
