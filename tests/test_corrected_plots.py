@@ -96,3 +96,54 @@ class CorrectedPlotTests(unittest.TestCase):
         self.assertEqual(list(first.x).count('tech-free'), 1)
         self.assertFalse({'tech-free1','tech-free2','tech-free3'} & set(first.x))
         self.assertEqual(first.y[list(first.x).index('tech-free')], 12.5)
+
+
+class CorrectedOpeningHierarchyTests(unittest.TestCase):
+    @staticmethod
+    def frame(specifications):
+        games=[]
+        for i,(score,counts) in enumerate(specifications):
+            source=game(score=score,other=150,identifier='opening-'+str(i))
+            for p in (1,2):
+                for key in ('m','ts','lab','PI','ac1','ac2'):
+                    source[f'pos_{p}_buildings_r_1_{key}']=counts.get(key,0)
+            games.append(source)
+        return pd.DataFrame(games)
+
+    def test_hierarchy_counts_and_parent_colors_are_observation_weighted_prebid(self):
+        frame=self.frame([(100,{'m':2,'PI':1})]*3+[(200,{'m':3,'PI':1}),(150,{'m':2,'lab':1})])
+        original=frame.copy(deep=True)
+        figure=make_plot('round-one-structures',frame,players=2,faction='terrans')
+        trace=figure.data[0]
+        nodes={identity:(parent,value,score) for identity,parent,value,score in
+               zip(trace.ids,trace.parents,trace.values,trace.customdata)}
+        self.assertEqual(trace.branchvalues,'total')
+        self.assertEqual(nodes['terrans'],('',5,150))
+        self.assertEqual(nodes['terrans/PI'],('terrans',4,145))
+        self.assertEqual(nodes['terrans/lab'],('terrans',1,170))
+        self.assertEqual(nodes['terrans/PI/2-m_0-ts_0-lab_1-pi_0-ac1_0-ac2'],('terrans/PI',3,120))
+        self.assertEqual(nodes['terrans/PI/3-m_0-ts_0-lab_1-pi_0-ac1_0-ac2'],('terrans/PI',1,220))
+        self.assertEqual(list(trace.marker.colors),list(trace.customdata))
+        self.assertEqual(figure.layout.meta['structure_observations'],5)
+        self.assertEqual(figure.layout.meta['unavailable_structure_observations'],0)
+        pd.testing.assert_frame_equal(frame,original)
+
+    def test_representative_hierarchy_matches_historical_without_old_score_math(self):
+        frame=self.frame([(150,{'m':2,'PI':1}),(150,{'m':2,'PI':1}),
+                          (150,{'m':2,'lab':1}),(150,{'m':1,'ts':2}),(150,{'m':3})])
+        original=make_plot('round-one-structures',frame,players=2,faction='terrans',methodology='historical').data[0]
+        corrected=make_plot('round-one-structures',frame,players=2,faction='terrans').data[0]
+        def hierarchy(trace):
+            return {(str(label).strip(),str(parent).strip()):int(value)
+                    for label,parent,value in zip(trace.labels,trace.parents,trace.values)}
+        self.assertEqual(hierarchy(corrected),hierarchy(original))
+        self.assertTrue(all(score==170 for score in corrected.customdata))
+
+    def test_unknown_structures_are_unavailable_not_zero_openings(self):
+        frame=self.frame([(150,{'m':2,'PI':1}),(150,{'m':None})])
+        figure=make_plot('round-one-structures',frame,players=2,faction='terrans')
+        self.assertEqual(figure.data[0].values[0],1)
+        self.assertEqual(figure.layout.meta['unavailable_structure_observations'],1)
+        unknown=make_plot('round-one-structures',frame.iloc[1:],players=2,faction='terrans')
+        self.assertEqual(len(unknown.data),0)
+        self.assertEqual(unknown.layout.meta['structure_observations'],0)

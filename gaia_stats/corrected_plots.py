@@ -69,20 +69,38 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
     if not selected:
         fig=go.Figure();fig.add_annotation(text='No eligible observations',showarrow=False)
         fig.update_layout(title=title);return fig
+    plot_meta = {}
     if kind == 'round-one-structures':
         from .chart_groups import opening_configuration
         groups = defaultdict(list)
+        classes = defaultdict(list)
         for row in selected:
             counts = {key: row['values'].get(row['prefix']+'buildings_r_1_'+key) for key in ('m','ts','lab','PI','ac1','ac2')}
             configuration = opening_configuration(counts)
             if configuration is not None:
-                groups[configuration[1]].append(row)
-        from .score_colors import marker
-        labels = sorted(groups)
-        fig = go.Figure(go.Treemap(labels=labels, parents=['']*len(labels), values=[len(groups[key]) for key in labels],
-            marker=marker([mean_score(groups[key])[0] for key in labels]),
-            customdata=[mean_score(groups[key])[0] for key in labels],
-            hovertemplate='%{label}<br>Player-games=%{value}<br>Mean pre-bid VP=%{customdata}<extra></extra>'))
+                category, label, _ = configuration
+                groups[(category, label)].append(row)
+                classes[category].append(row)
+        observed = [row for group in groups.values() for row in group]
+        plot_meta = {'structure_observations':len(observed),
+                     'unavailable_structure_observations':len(selected)-len(observed)}
+        if not observed:
+            fig=go.Figure();fig.add_annotation(text='No observed round-one structures',showarrow=False)
+        else:
+            # Preserve the original faction -> strategy class -> exact opening
+            # hierarchy. Calculate every parent from its player observations,
+            # never by averaging child means or counting parent copies twice.
+            nodes=[(faction,faction,'',observed)]
+            for category, group in sorted(classes.items()):
+                nodes.append((f'{faction}/{category}',category,faction,group))
+            for (category,label), group in sorted(groups.items()):
+                nodes.append((f'{faction}/{category}/{label}',label,f'{faction}/{category}',group))
+            values=[mean_score(group)[0] for _,_,_,group in nodes]
+            from .score_colors import marker
+            fig = go.Figure(go.Treemap(ids=[node[0] for node in nodes], labels=[node[1] for node in nodes],
+                parents=[node[2] for node in nodes], values=[len(node[3]) for node in nodes], branchvalues='total',
+                marker=marker(values), customdata=values,
+                hovertemplate='%{label}<br>Player-games=%{value}<br>Mean pre-bid VP=%{customdata}<extra></extra>'))
     elif kind == 'point-sources':
         fig = go.Figure()
         for rank in range(1, players+1):
@@ -162,5 +180,5 @@ def make_corrected(kind,data,players,faction,min_elo=None,prepared_rows=None):
                 hovertemplate='%{x} / %{y}<br>%{z}<br>score observations n=%{customdata}<extra></extra>',
                 colorbar={'x':.45 if col==1 else 1.02},colorscale='Greens'),row=1,col=col)
     fig.update_layout(title=title,meta={'methodology':'corrected-prebid-v2','observations':len(selected),
-                                      'games':len({r['game'] for r in selected}),'min_elo':min_elo})
+                                      'games':len({r['game'] for r in selected}),'min_elo':min_elo,**plot_meta})
     return fig
