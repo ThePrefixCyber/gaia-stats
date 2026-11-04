@@ -23,10 +23,11 @@ const html = readFileSync('web/cohort/index.html', 'utf8');
 const script = readFileSync('web/cohort/app.js', 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function harness({plotly=true, controlled=false, controlledCatalog=false, memories={}}={}) {
-  const dom = new JSDOM(html, {url:'http://localhost/', runScripts:'outside-only'});
+async function harness({plotly=true, controlled=false, controlledCatalog=false, memories={}, url='http://localhost/?ruleset=base', rememberedMode=null}={}) {
+  const dom = new JSDOM(html, {url, runScripts:'outside-only'});
   const w=dom.window, requests=[], pending=[], catalogs=[], draws=[], purges=[];
   w.sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));
+  if(rememberedMode!==null)w.sessionStorage.setItem('gaia-cohort-mode',rememberedMode);
   let failures=false;
   const plots = {
     react(target,traces,layout){target.data=traces;target.layout=layout;draws.push(traces);return Promise.resolve();},
@@ -51,6 +52,7 @@ async function harness({plotly=true, controlled=false, controlledCatalog=false, 
   };
   w.eval(readFileSync('web/cohort/tile-labels.js','utf8').replace('__TILE_REGISTRY__',readFileSync('web/cohort/tile-labels.json','utf8')));
   w.eval(readFileSync('web/cohort/tables.js','utf8'));
+  w.eval(readFileSync('web/cohort/basic-tech.js','utf8'));
   w.eval(script+'\nwindow.testClient={getResult:()=>result,getSize:()=>responses.size,expire:()=>{for(const entry of responses.values())entry.time-=RESPONSE_TTL+1;}};');
   await tick();await tick();
   const get=id=>w.document.getElementById(id);
@@ -150,15 +152,15 @@ test('Plotly and API errors retain exact fallback and allow retry', async()=>{
   }finally{h.close();}
 });
 
-test('all eight views render with six requests; expired responses refetch', async()=>{
+test('all nine views render with eight requests; expired responses refetch', async()=>{
   const h=await harness();
   try{
     for(const kind of Object.keys(fixtures.base.stats[''].plots))await h.select('plot',kind);
-    assert.equal(h.requests.length,6);
+    assert.equal(h.requests.length,8);
     assert.equal(h.draws.at(-1)[0].type,'box');
     h.w.testClient.expire();
     await h.select('plot','advanced-tech-frequency');
-    assert.equal(h.requests.length,7);
+    assert.equal(h.requests.length,9);
     assert.ok(h.w.testClient.getSize()<=8);
   }finally{h.close();}
 });
@@ -204,3 +206,9 @@ test('failed catalog can retry without saving the previous mode form', async()=>
     assert.equal(h.requests.at(-1).min_elo,'200');
   }finally{h.close();}
 });
+
+ test('mode labels, new visitor default, remembered choice and explicit links',async()=>{
+ for(const [url,rememberedMode,expected] of [['http://localhost/',null,'lost-fleet'],['http://localhost/','base','base'],['http://localhost/?ruleset=lost-fleet','base','lost-fleet'],['http://localhost/?ruleset=base','lost-fleet','base'],['http://localhost/','invalid','lost-fleet']]){
+ const h=await harness({url,rememberedMode});try{assert.equal(h.get('mode').value,expected);assert.deepEqual([...h.get('mode').options].map(o=>o.text),['Lost Fleet • Live','Base Game • Static']);await h.select('mode',expected==='base'?'lost-fleet':'base');assert.equal(h.w.sessionStorage.getItem('gaia-cohort-mode'),h.get('mode').value);}finally{h.close();}
+ }
+ });

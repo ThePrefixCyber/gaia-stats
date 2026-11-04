@@ -97,7 +97,7 @@ class PerformanceTests(unittest.TestCase):
 
     def test_technology_views_have_identical_observations(self):
         for mode in ('base', 'lost-fleet'):
-            for family in ('basic', 'advanced'):
+            for family in ('advanced',):
                 plots = []
                 for view in ('frequency', 'score'):
                     kind = f'{family}-tech-{view}'

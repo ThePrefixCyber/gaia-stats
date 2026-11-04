@@ -1,6 +1,6 @@
 'use strict';
 const form=document.querySelector('#filters'), el=id=>document.getElementById(id);
-const names={'advanced-tech-frequency':'Advanced tech: frequency / rank','advanced-tech-score':'Advanced tech: position / score','basic-tech-frequency':'Basic & ship tech: frequency / rank','basic-tech-score':'Basic & ship tech: position / score','round-one-structures':'Round-one structures: frequency / score','final-scoring':'Final scoring by faction and pair','round-scoring':'Round scoring preferences','point-sources':'Point-source breakdown'};
+const names={'advanced-tech-frequency':'Advanced tech: frequency / rank','advanced-tech-score':'Advanced tech: position / score','basic-tech-frequency':'Basic tech 1 · Acquisition by setup','basic-tech-score':'Basic tech 2 · Score when taken','basic-tech-setup-score':'Basic tech 3 · Score by setup','round-one-structures':'Round-one structures: frequency / score','final-scoring':'Final scoring by faction and pair','round-scoring':'Round scoring preferences','point-sources':'Point-source breakdown'};
 for(const [value,label] of Object.entries(names))el('plot').add(new Option(label,value));
 let result=null, generation=0, memories={};
 let requestController=null, pendingKey=null, comparisonSignature=null, plotlyFailed=false;
@@ -12,7 +12,7 @@ function cachedResponse(q){
  const key=cacheKey(q),kind=q.get('plot');
  let entry=responses.get(key);
  // Frequency and score views use exactly the same technology observations.
- if(!entry&&kind.includes('tech-')){
+ if(!entry&&kind.startsWith('advanced-tech-')){
   const alternate=new URLSearchParams(q);
   alternate.set('plot',kind.endsWith('frequency')?kind.replace('frequency','score'):kind.replace('score','frequency'));
   const source=responses.get(cacheKey(alternate));
@@ -21,7 +21,8 @@ function cachedResponse(q){
  return entry&&Date.now()-entry.time<RESPONSE_TTL?entry.data:null;
 }
 try{memories=JSON.parse(sessionStorage.getItem('gaia-cohort-filters')||'{}');}catch{}
-const initialMode=new URLSearchParams(location.search).get('ruleset');if(['base','lost-fleet'].includes(initialMode))el('mode').value=initialMode;
+let rememberedMode;try{rememberedMode=sessionStorage.getItem('gaia-cohort-mode');}catch{}
+const explicitMode=new URLSearchParams(location.search).get('ruleset');const initialMode=['base','lost-fleet'].includes(explicitMode)?explicitMode:rememberedMode;if(['base','lost-fleet'].includes(initialMode))el('mode').value=initialMode;
 function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;memories[loadedMode]={...Object.fromEntries(new FormData(form)),plot:el('plot').value};try{sessionStorage.setItem('gaia-cohort-filters',JSON.stringify(memories));}catch{}}
 function query(){const q=new URLSearchParams(new FormData(form));q.set('ruleset',el('mode').value);q.set('plot',el('plot').value);for(const [key,value] of [...q])if(value==='')q.delete(key);return q;}
 function table(target,rows,columns,options){GaiaTables.render(target,rows,columns,options);}
@@ -53,10 +54,12 @@ function treemapScoreStyle(values){
  marker.colorbar.tickvals=[...(low<0?[low,low/2]:[]),0,...(high>0?[high/4,high/2,3*high/4,high]:[])];
  return {marker,note:'Color: grey = 0 VP.'+(high>0?' Very dark blue = the highest mean net VP shown.':'')+(low<0?' Rust indicates negative mean net VP.':'')};
 }
-function draw(){if(!result)return;const kind=el('plot').value,p=result.plots[kind];if(!p)return;const cells=p.cells;el('note').textContent=p.note+` ${p.unavailable_records} records unavailable for this metric.`;const columns=kind==='point-sources'?['label','samples','median','q1','q3']:kind.includes('tech-')?['label','samples','available','frequency','mean_score','mean_rank']:(kind==='round-scoring'||kind==='final-scoring')?['label','games','samples','score_samples','mean_score','mean_final_score','win_share',...(kind==='final-scoring'?['score_baseline','score_baseline_samples','score_difference','win_baseline','win_baseline_samples','win_difference']:[])]:['label','samples','mean_score','mean_rank','win_share'];table(el('metrics'),cells,columns,{kind,labels:{mean_score:p.value_label}});
+function draw(){if(!result)return;const kind=el('plot').value,p=result.plots[kind];if(!p)return;const cells=p.cells;el('note').textContent=p.note+` ${p.unavailable_records} records unavailable for this metric.`;const columns=kind==='point-sources'?['label','samples','median','q1','q3']:kind==='basic-tech-frequency'?['label','samples','available','setup_samples','unknown_ownership','frequency','mean_score','mean_rank']:kind.startsWith('basic-tech-')?['label','samples','games','mean_score','mean_rank']:kind.includes('tech-')?['label','samples','available','frequency','mean_score','mean_rank']:(kind==='round-scoring'||kind==='final-scoring')?['label','games','samples','score_samples','mean_score','mean_final_score','win_share',...(kind==='final-scoring'?['score_baseline','score_baseline_samples','score_difference','win_baseline','win_baseline_samples','win_difference']:[])]:['label','samples','mean_score','mean_rank','win_share'];table(el('metrics'),cells,columns,{kind,labels:{mean_score:p.value_label}});
 if(!cells.length){if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent=p.selection_required==='faction'?'Choose a faction above to compare final-scoring tile pairs. Pooling all players produces fixed prize-pool averages.':'No observations available for this selection.';return;}
+const viewportWidth=Math.max(320,el('chart-frame').clientWidth||window.innerWidth-32),viewportHeight=document.body?.classList.contains('chart-focus')?Math.max(320,el('chart-frame').clientHeight):Math.max(480,window.innerHeight-125);
 let traces=[],layout={margin:{b:180,t:40},title:names[kind],yaxis:{title:p.value_label,automargin:true},xaxis:{automargin:true},showlegend:true};
-if(kind==='point-sources'){traces=cells.map(c=>({type:'box',name:GaiaTiles.metric(kind,c.label),q1:[c.q1],median:[c.median],q3:[c.q3],lowerfence:[c.lower],upperfence:[c.upper],hovertext:'n='+c.samples}));layout.yaxis.title='VP contribution (signed)';el('note').textContent+=' Boxes: quartiles, with min/max whiskers.';}
+if(kind.startsWith('basic-tech-')){({traces,layout}=GaiaBasicTech.build(kind,cells,result,viewportWidth,viewportHeight));}
+else if(kind==='point-sources'){traces=cells.map(c=>({type:'box',name:GaiaTiles.metric(kind,c.label),q1:[c.q1],median:[c.median],q3:[c.q3],lowerfence:[c.lower],upperfence:[c.upper],hovertext:'n='+c.samples}));layout.yaxis.title='VP contribution (signed)';el('note').textContent+=' Boxes: quartiles, with min/max whiskers.';}
 else if(kind==='final-scoring'){
  const pairs=[...new Set(cells.map(c=>c.x))],factions=[...new Set(cells.map(c=>c.y))],lookup=new Map(cells.map(c=>[JSON.stringify([c.x,c.y]),c]));
  const pairText=x=>{const c=cells.find(c=>c.x===x);return c.player_count+' players: '+c.tiles.map(t=>GaiaTiles.label('final',t)).join(' + ');};
@@ -72,16 +75,16 @@ else if(kind==='final-scoring'){
  layout.yaxis2={...layout.yaxis,anchor:'x2',showticklabels:false};
  layout.annotations=[{text:'Tile VP − all-faction pair mean',x:.175,y:1.08,xanchor:'center',xref:'paper',yref:'paper',showarrow:false},{text:'Win share − faction baseline (pp)',x:.825,y:1.08,xanchor:'center',xref:'paper',yref:'paper',showarrow:false}];
 }
-else if(kind==='round-scoring'){const xs=[...new Set(cells.map(c=>c.x))],ys=[...new Set(cells.map(c=>c.y))],lookup=new Map(cells.map(c=>[JSON.stringify([c.x,c.y]),c]));traces=['mean_score','win_share'].map((metric,index)=>({type:'heatmap',x:xs,y:ys,z:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c&&c[metric]!=null?c[metric]*(index?100:1):null;})),text:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c?`${GaiaTiles.metric(kind,c.label)}<br>n=${index?c.samples:c.score_samples}`:'Unavailable';})),hovertemplate:'%{x} / %{y}<br>'+(index?'Shared wins (%)':p.value_label)+' %{z}<br>%{text}<extra></extra>',colorscale:'Blues',hoverongaps:false,xaxis:index?'x2':'x',yaxis:index?'y2':'y',colorbar:{x:index?1.02:.4,thickness:12}}));layout.margin.t=100;layout.title={text:names[kind],y:.98};layout.margin.l=120;layout.xaxis.domain=[0,.38];layout.xaxis2={domain:[.64,1],anchor:'y2',automargin:true};layout.yaxis.domain=[0,1];layout.yaxis2={domain:[0,1],anchor:'x2',automargin:true};layout.annotations=[{text:p.value_label,x:.18,y:1.06,xref:'paper',yref:'paper',showarrow:false},{text:'Shared wins (%)',x:.82,y:1.06,xref:'paper',yref:'paper',showarrow:false}];const category=kind==='round-scoring'?'round':'final';const axisLabels=values=>values.map(v=>category==='round'&&/^Round [1-6]$/.test(v)?v:GaiaTiles.label(category,v));for(const key of ['xaxis','xaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:xs,ticktext:axisLabels(xs)});for(const key of ['yaxis','yaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:ys,ticktext:axisLabels(ys)});layout.yaxis.title='Scoring tile';}
+else if(kind==='round-scoring'){const xs=[...new Set(cells.map(c=>c.x))],ys=[...new Set(cells.map(c=>c.y))],lookup=new Map(cells.map(c=>[JSON.stringify([c.x,c.y]),c]));traces=['mean_score','win_share'].map((metric,index)=>({type:'heatmap',x:xs,y:ys,z:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c&&c[metric]!=null?c[metric]*(index?100:1):null;})),text:ys.map(y=>xs.map(x=>{const c=lookup.get(JSON.stringify([x,y]));return c?`${GaiaTiles.metric(kind,c.label)}<br>n=${index?c.samples:c.score_samples}`:'Unavailable';})),hovertemplate:''+(index?'Shared wins (%)':p.value_label)+' %{z}<br>%{text}<extra></extra>',colorscale:'Blues',hoverongaps:false,xaxis:index?'x2':'x',yaxis:index?'y2':'y',colorbar:{x:index?1.02:.4,thickness:12}}));layout.margin.t=100;layout.title={text:names[kind],y:.98};layout.margin.l=120;layout.xaxis.domain=[0,.38];layout.xaxis2={domain:[.64,1],anchor:'y2',automargin:true};layout.yaxis.domain=[0,1];layout.yaxis2={domain:[0,1],anchor:'x2',automargin:true};layout.annotations=[{text:p.value_label,x:.18,y:1.06,xref:'paper',yref:'paper',showarrow:false},{text:'Shared wins (%)',x:.82,y:1.06,xref:'paper',yref:'paper',showarrow:false}];const category=kind==='round-scoring'?'round':'final';const axisLabels=values=>values.map(v=>category==='round'&&/^Round [1-6]$/.test(v)?v:GaiaTiles.label(category,v));for(const key of ['xaxis','xaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:xs,ticktext:axisLabels(xs)});for(const key of ['yaxis','yaxis2'])Object.assign(layout[key],{tickmode:'array',tickvals:ys,ticktext:axisLabels(ys)});layout.yaxis.title='Scoring tile';}
 
-else if(kind.endsWith('frequency')){traces=[1,2,3,4].map(rank=>({type:'bar',name:'Rank '+rank,x:cells.map(c=>GaiaTiles.metric(kind,c.label)),y:cells.map(c=>c.available?(c.rank_counts[rank]||0)/c.available:null),hovertext:cells.map(c=>`taken=${c.samples}; available=${c.available}`),hovertemplate:'%{x}<br>%{y}<br>%{hovertext}<extra></extra>'}));layout.barmode='stack';layout.yaxis.title='Acquisition frequency by final rank';}
+else if(kind.endsWith('frequency')){traces=[1,2,3,4].map(rank=>({type:'bar',name:'Rank '+rank,x:cells.map(c=>c.label),customdata:cells.map(c=>GaiaTiles.metric(kind,c.label)),y:cells.map(c=>c.available?(c.rank_counts[rank]||0)/c.available:null),hovertext:cells.map(c=>`taken=${c.samples}; available=${c.available}`),hovertemplate:'%{customdata}<br>%{y}<br>%{hovertext}<extra></extra>'}));layout.barmode='stack';layout.xaxis={tickmode:'array',tickvals:cells.map(c=>c.label),ticktext:cells.map(c=>GaiaTiles.metric(kind,c.label)),automargin:true};layout.yaxis.title='Acquisition frequency by final rank';}
 else if(kind==='round-one-structures'){
  const scoreStyle=treemapScoreStyle(cells.map(c=>c.mean_score));
  el('note').textContent+=' '+scoreStyle.note;
  traces=[{type:'treemap',labels:cells.map(c=>GaiaTiles.metric(kind,c.label)),parents:cells.map(()=>''),values:cells.map(c=>c.samples),marker:scoreStyle.marker,hovertext:cells.map(c=>`n=${c.samples}; mean net VP=${c.mean_score??'unavailable'}`),hovertemplate:'%{label}<br>%{hovertext}<extra></extra>'}];
 }
-else {traces=[{type:'scatter',mode:'markers',name:'Mean net VP',y:cells.map(c=>GaiaTiles.metric(kind,c.label)),x:cells.map(c=>c.mean_score),hovertext:cells.map(c=>`n=${c.samples}; mean rank=${c.mean_rank??'unavailable'}`),hovertemplate:'%{y}<br>%{x} VP<br>%{hovertext}<extra></extra>'}];layout.xaxis.title=p.value_label;layout.yaxis.title='Technology / position';}
-el('chart').style.height=(layout.height||600)+'px';
+else {traces=[{type:'scatter',mode:'markers',name:'Mean net VP',y:cells.map(c=>c.label),customdata:cells.map(c=>GaiaTiles.metric(kind,c.label)),x:cells.map(c=>c.mean_score),hovertext:cells.map(c=>`n=${c.samples}; mean rank=${c.mean_rank??'unavailable'}`),hovertemplate:'%{customdata}<br>%{x} VP<br>%{hovertext}<extra></extra>'}];layout.xaxis.title=p.value_label;layout.yaxis={title:'Tech / Location',tickmode:'array',tickvals:cells.map(c=>c.label),ticktext:cells.map(c=>GaiaTiles.metric(kind,c.label)),automargin:true};}
+layout.height=Math.max(layout.height||0,viewportHeight);layout.width=layout.width||viewportWidth;layout.showlegend=traces.length>1;el('chart').style.height=layout.height+'px';el('chart').style.width=layout.width+'px';
 if(window.Plotly){
  // react preserves Plotly's DOM and listeners instead of tearing down every view.
  if(!el('chart').data)el('chart').replaceChildren();
@@ -92,7 +95,7 @@ if(window.Plotly){
 function renderResult(data,q){
  result=data;
  el('status').textContent=`${data.games} games · ${data.samples} player-game observations · ${data.missing_elo} missing pregame Elo`;
- el('scope').textContent=data.scope+(el('mode').value==='base'?'. Auction metadata is unavailable in these CSVs. All dynamic views use net scores, without historical score/quantile cutoffs.':'. Public finished-game records; exclusions and sparse observations still limit inference.');
+ el('scope').hidden=el('mode').value==='lost-fleet';el('scope').textContent=el('mode').value==='base'?data.scope+'. Auction metadata is unavailable in these CSVs. All dynamic views use net scores, without historical score/quantile cutoffs.':'';
  el('csv').href='/cohort/api/export?'+q;
  // Chart changes do not require rebuilding identical comparison tables.
  const signature=JSON.stringify([data.comparisons,data.setup_comparisons]);
@@ -133,13 +136,13 @@ async function update({refresh=false}={}){
   if(current===generation){requestController=null;pendingKey=null;el('chart').setAttribute('aria-busy','false');}
  }
 }
-form.onsubmit=e=>{e.preventDefault();update({refresh:true});};el('plot').onchange=()=>update();
+form.onsubmit=e=>{e.preventDefault();update({refresh:true});};el('plot').onchange=()=>update();form.elements.faction.onchange=()=>update();
 // The form still belongs to loadedMode when the selector changes. Never save
 // half-loaded or disabled fields under a newly selected mode.
-el('mode').onchange=()=>{save();loadMode();};
+el('mode').onchange=()=>{save();try{sessionStorage.setItem('gaia-cohort-mode',el('mode').value);}catch{}loadMode();};
 async function loadMode(){
  cancelRequest();responses.clear();cachedCohort=null;comparisonSignature=null;loadedMode=null;
- form.querySelector('fieldset').disabled=true;el('plot').disabled=true;el('chart').setAttribute('aria-busy','true');
+ form.querySelector('fieldset').disabled=true;form.elements.faction.disabled=true;el('plot').disabled=true;el('chart').setAttribute('aria-busy','true');
  requestController=new AbortController();const signal=requestController.signal;
  const mode=el('mode').value,current=++generation;history.replaceState(null,'','?ruleset='+mode);result=null;el('status').textContent='Loading mode…';el('csv').removeAttribute('href');
  for(const id of ['comparison','round-comparison','final-comparison','tech-comparison','metrics'])el(id).replaceChildren();
@@ -151,11 +154,16 @@ async function loadMode(){
   for(let i=1;i<=6;i++){const label=document.createElement('label');label.textContent='Round '+i;const select=document.createElement('select');select.name='round'+i;select.add(new Option('Any',''));for(const value of catalog.round_scorings)select.add(new Option(GaiaTiles.label('round',value),value));label.append(select);el('rounds').append(label);}
   for(const slot of ['adv-terra','adv-nav','adv-int','adv-gaia','adv-eco','adv-sci',...(mode==='lost-fleet'?['adv-ext']:[])]){const label=document.createElement('label');label.textContent=GaiaTiles.position(slot);const select=document.createElement('select');select.name=slot;select.add(new Option('Any',''));for(const tile of catalog.advanced_technologies)select.add(new Option(GaiaTiles.label('advanced',tile),tile));label.append(select);el('techs').append(label);}
   for(const key of ['lf_2p_4qic_mode','auction']){form.elements[key].disabled=mode==='base';form.elements[key].parentElement.hidden=mode==='base';}
-  const saved=memories[mode]||{};for(const [key,value] of Object.entries(saved)){const field=form.elements[key];if(field&&!field.disabled){if(field.tagName!=='SELECT'||[...field.options].some(o=>o.value===value))field.value=value;}}
+  form.elements.faction.disabled=false;const saved=memories[mode]||{};for(const [key,value] of Object.entries(saved)){const field=form.elements[key];if(field&&!field.disabled){if(field.tagName!=='SELECT'||[...field.options].some(o=>o.value===value))field.value=value;}}
   el('plot').value=names[saved.plot]?saved.plot:'advanced-tech-frequency';
-  loadedMode=mode;form.querySelector('fieldset').disabled=false;el('plot').disabled=false;await update();
- }catch(error){if(current===generation&&error.name!=='AbortError'){el('status').textContent=error.message;el('chart').textContent='Unavailable';el('chart').setAttribute('aria-busy','false');form.querySelector('fieldset').disabled=false;el('plot').disabled=false;}}
+  loadedMode=mode;form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;await update();
+ }catch(error){if(current===generation&&error.name!=='AbortError'){el('status').textContent=error.message;el('chart').textContent='Unavailable';el('chart').setAttribute('aria-busy','false');form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;}}
 }
+const focusButton=el('chart-focus');
+function focusChart(active){for(const child of document.querySelector('main').children){if(child!==el('chart-panel'))child.inert=active;}document.body.classList.toggle('chart-focus',active);focusButton.textContent=active?'Exit chart view':'Expand chart';focusButton.setAttribute('aria-pressed',String(active));draw();focusButton.focus();}
+focusButton.onclick=()=>focusChart(!document.body.classList.contains('chart-focus'));
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.body.classList.contains('chart-focus'))focusChart(false);});
+let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(draw,100);});
 // Begin metadata and statistics loading without waiting for the large plotting bundle.
 const plotlyScript=document.createElement('script');
 plotlyScript.src='/classic/assets/plotly.min.js';plotlyScript.async=true;

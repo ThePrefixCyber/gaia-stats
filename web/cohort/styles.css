@@ -83,3 +83,17 @@ footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #d4dee8; fon
 /* Keep the final-scoring comparison readable; its region handles narrow screens. */
 .final-scoring-table th { min-width: 11rem; }
 .final-scoring-table th:first-child, .final-scoring-table .cell-label { min-width: 22rem; max-width: 28rem; }
+
+/* A dedicated viewport-sized chart workspace, with an accessible distraction-free view. */
+main { max-width: none; }
+#chart-panel { width: 100%; background: #fff; }
+#chart-panel .results-toolbar { padding: 10px 14px; margin: 0; }
+#chart-frame { width: 100%; overflow: auto; }
+#chart { border: 0; border-radius: 0; }
+body.chart-focus { overflow: hidden; }
+body.chart-focus #chart-panel { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; }
+body.chart-focus #chart-panel .results-toolbar { flex: none; }
+body.chart-focus #chart-frame { flex: 1; min-height: 0; }
+body.chart-focus #chart-panel #csv { display: none; }
+#tile-key { overflow-wrap: anywhere; }
+@media(max-width:640px) { #chart-panel .results-toolbar { flex-direction: row; align-items: center; gap:8px; } #chart-panel .results-toolbar label { flex: 1 1 180px; } }

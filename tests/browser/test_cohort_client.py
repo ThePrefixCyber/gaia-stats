@@ -200,10 +200,10 @@ class CohortBrowserTests(unittest.TestCase):
                 self.assertIn('Choose a faction', self.page.locator('#chart').inner_text())
             else:
                 self.page.wait_for_function("document.getElementById('chart').data?.length > 0")
-        self.assertEqual(len(self.requests), 6)  # Two paired technology views share data.
+        self.assertEqual(len(self.requests), 8)  # Only paired advanced-tech views share data.
         self.page.evaluate('for(const entry of responses.values())entry.time-=RESPONSE_TTL+1')
         self.select_plot('advanced-tech-frequency')
-        self.assertEqual(len(self.requests), 7)
+        self.assertEqual(len(self.requests), 9)
         self.assertLessEqual(self.page.evaluate('responses.size'), 8)
         self.select_plot('round-scoring')
         screenshot = os.environ.get('COHORT_SCREENSHOT')

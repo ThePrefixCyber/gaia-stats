@@ -28,10 +28,10 @@ The significant two-player LF **4-QIC → technology** variant has three choices
 explicit BGS option metadata, not faction names. The default excludes that
 variant; it does not remove ordinary three- and four-player LF games.
 
-All eight chart views use the same selected cohort as the faction comparisons,
+All nine chart views use the same selected cohort as the faction comparisons,
 round/final/advanced-tech tables and selected player-game CSV:
 
-- Basic and advanced technology acquisition frequencies and mean-score plots.
+- Three basic-technology views: acquisition by setup location, acquirers’ mean score by source location, and all setup observations’ mean score. Advanced technology frequency and mean-score plots remain available. See [basic-tech methods](docs/BASIC_TECH_MODES.md).
 - Round-one structure treemap.
 - Round and final scoring heatmaps, alongside shared-win heatmaps.
 - Signed VP-source distributions with exact quartiles and min/max whiskers.

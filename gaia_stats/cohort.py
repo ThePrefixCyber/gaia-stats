@@ -17,7 +17,7 @@ from .__main__ import atomic_json
 from .scoring import complete_ledger, tile_value
 
 PLOTS = ('advanced-tech-frequency', 'advanced-tech-score', 'basic-tech-frequency',
-         'basic-tech-score', 'round-one-structures', 'final-scoring',
+         'basic-tech-score', 'basic-tech-setup-score', 'round-one-structures', 'final-scoring',
          'round-scoring', 'point-sources')
 
 
@@ -115,6 +115,9 @@ def summary(group):
 def statistics(rows, kind):
     if kind not in PLOTS:
         raise ValueError('Unknown plot')
+    if kind in ('basic-tech-frequency','basic-tech-score','basic-tech-setup-score'):
+        from .basic_tech import statistics as basic_statistics
+        return basic_statistics(rows, kind)
     groups = defaultdict(list)
     opportunities = Counter()
     unavailable = 0
@@ -236,6 +239,9 @@ def final_scoring_comparison(plot, filters):
 
 
 def report(dataset, filters, *, finalize=True):
+    if filters.get('plot') in (None,'basic-tech-frequency','basic-tech-score','basic-tech-setup-score'):
+        from .basic_tech import prepare
+        dataset = {**dataset, 'rows':prepare(dataset['rows'])}
     rows = cohort(dataset, filters)
     groups = defaultdict(list)
     for row in rows:
@@ -309,7 +315,8 @@ def response(dataset, path, filters):
         script = (root / 'tile-labels.js').read_text()
         registry = json.loads((root / 'tile-labels.json').read_text())
         return script.replace('__TILE_REGISTRY__', json.dumps(registry)).encode(), 'application/javascript'
-    assets = {'/cohort/app.js': ('app.js', 'application/javascript'),
+    assets = {'/cohort/basic-tech.js': ('basic-tech.js', 'application/javascript'),
+              '/cohort/app.js': ('app.js', 'application/javascript'),
               '/cohort/tables.js': ('tables.js', 'application/javascript'),
               '/cohort/styles.css': ('styles.css', 'text/css; charset=utf-8')}
     if path in assets:

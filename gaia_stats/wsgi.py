@@ -71,7 +71,7 @@ class Application:
             raise ValueError('Choose 2, 3 or 4 players')
         # The shell and script do not use cohort data. Never queue them behind
         # an expensive calculation or decode the LF dataset just to serve bytes.
-        if path in ('/cohort/', '/cohort/app.js', '/cohort/tables.js', '/cohort/styles.css'):
+        if path in ('/cohort/', '/cohort/app.js', '/cohort/tables.js', '/cohort/styles.css', '/cohort/basic-tech.js'):
             return response({}, path, filters)
         is_base = filters.get('ruleset') == 'base' and path.startswith('/cohort/api/')
         if is_base:
