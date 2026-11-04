@@ -240,6 +240,10 @@ def response(dataset, path, filters):
     root = Path(__file__).resolve().parent.parent / 'web' / 'cohort'
     if path == '/cohort/':
         return (root / 'index.html').read_bytes(), 'text/html; charset=utf-8'
+    if path == '/cohort/tile-labels.js':
+        script = (root / 'tile-labels.js').read_text()
+        registry = json.loads((root / 'tile-labels.json').read_text())
+        return script.replace('__TILE_REGISTRY__', json.dumps(registry)).encode(), 'application/javascript'
     if path == '/cohort/app.js':
         return (root / 'app.js').read_bytes(), 'application/javascript'
     if path == '/cohort/api/catalog':

@@ -55,6 +55,8 @@ class Application:
 
     def cohort_response(self, path, filters):
         from .cohort import response
+        if path == '/cohort/tile-labels.js':
+            return response(None, path, {})
         allowed={'ruleset','plot','player_count','faction','min_elo','lf_2p_4qic_mode',
                  'layout','auction','faction_variant','final_scoring','final_scoring2'}
         allowed.update(f'round{i}' for i in range(1,7))
