@@ -274,6 +274,21 @@ class DataContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'exactly match'):
             self.check()
 
+    def test_classic_parity_uses_seed_minus_verified_exclusions(self):
+        self.write(self.root/'exclusions.json', {'eligibility_policy':3, 'game_ids':['base']})
+        self.manifest['excluded_game_ids']=['base']
+        self.manifest['datasets']['base']={'games':0,'records':0}
+        self.manifest['empty_after_exclusion']=['base']
+        with sqlite3.connect(self.release/'base.sqlite') as db:
+            db.execute('DELETE FROM observations')
+        self.rehash()
+        path=self.build/'data/2.csv'
+        path.write_text(path.read_text().splitlines()[0]+'\n')
+        self.write(self.build/'eligible-games.json', {'complete':True, 'game_ids':[]})
+        self.catalogue['datasets']['2']['games']=0
+        self.write(self.build/'manifest.json', self.catalogue)
+        self.assertEqual(self.check()['datasets']['base']['games'],0)
+
     def test_classic_download_rejects_additional_self_consistent_game(self):
         path = self.build/'data/2.csv'
         path.write_text(path.read_text()+path.read_text().splitlines()[1].replace('base,2,','extra,2,')+'\n')
