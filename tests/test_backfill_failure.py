@@ -45,9 +45,9 @@ class BackfillFailureTests(unittest.TestCase):
             'last_publication_release':first['release']})
         clean={'listing_error':None,'retry':0,'accepted':0,'rejected':0}
         failed={**clean,'listing_error':'HTTP 400','listing_error_detail':{'http_status':400},'checkpoint':(10010,0)}
-        with patch('gaia_stats.refresh.collect',side_effect=[clean,failed,clean,failed]):
+        with patch('gaia_stats.refresh.collect',side_effect=[clean,failed]):
             result=run(self.store,self.seed,self.archive,self.legacy)
-        self.assertEqual(result['state'],'degraded');self.assertEqual(len(result['warnings']),2)
+        self.assertEqual(result['state'],'degraded');self.assertEqual(len(result['warnings']),1)
         self.assertFalse(result['publication_changed'])
         self.assertEqual(result['last_publication'],'old-publication')
         self.assertEqual(result['last_publication_release'],first['release'])
@@ -64,9 +64,9 @@ class BackfillFailureTests(unittest.TestCase):
         self.assertNotEqual(recovered['last_success'],'old-success')
         self.assertEqual(recovered['last_publication'],'old-publication')
 
-    def test_second_head_page_failure_is_fatal_for_either_mode(self):
+    def test_second_lost_fleet_head_page_failure_is_fatal(self):
         self.publish();pointer=(self.store/'current.json').read_bytes()
-        for mode in ('base','lost-fleet'):
+        for mode in ('lost-fleet',):
             class Client(FakeClient):
                 def get(self,url):
                     if '/status/ended?' in url:
@@ -114,10 +114,10 @@ class BackfillFailureTests(unittest.TestCase):
         self.publish();before=self.release_rows();pointer=(self.store/'current.json').read_bytes()
         clean={'listing_error':None,'retry':0,'accepted':0,'rejected':0}
         for retry in (False,True):
-            payload=game('Invalid-'+str(retry),lf=False)
+            payload=game('Invalid-'+str(retry))
             payload['data']['advancedLog']=[]
             queue=FakeClient({payload['slug']:payload})
-            collect(self.archive,'base',client=queue,max_pages=1,max_downloads=0)
+            collect(self.archive,'lost-fleet',client=queue,max_pages=1,max_downloads=0)
             class Client(FakeClient):
                 def get(self,url):
                     if '/status/ended?' in url:raise HTTPError(url,400,'listing',{},io.BytesIO(b'bad'))
@@ -125,7 +125,7 @@ class BackfillFailureTests(unittest.TestCase):
             client=Client(queue.games)
             if retry:client.fail_export.add(payload['slug'])
             def call(directory,mode,**kwargs):
-                if mode=='base' and not kwargs.get('head_only'):
+                if mode=='lost-fleet' and not kwargs.get('head_only'):
                     return collect(directory,mode,client=client,max_pages=1,max_downloads=10)
                 return clean
             with self.subTest(retry=retry),patch('gaia_stats.refresh.collect',side_effect=call):
@@ -134,7 +134,7 @@ class BackfillFailureTests(unittest.TestCase):
                 else:
                     result=run(self.store,self.seed,self.archive,self.legacy)
                     self.assertEqual(result['state'],'degraded')
-                    self.assertEqual(result['passes']['base']['rejected'],1)
+                    self.assertEqual(result['passes']['lost-fleet']['rejected'],1)
                     self.assertFalse(result['publication_changed'])
                 self.assertEqual((self.store/'current.json').read_bytes(),pointer)
                 self.assertEqual(self.release_rows(),before)
@@ -142,17 +142,17 @@ class BackfillFailureTests(unittest.TestCase):
     def test_deep_listing_failure_drains_queue_and_publishes_with_warning(self):
         class Client(FakeClient):
             def get(self, url):
-                if '/status/ended?' in url and 'expansion=' not in url:
+                if '/status/ended?' in url and 'expansion=lost-fleet' in url:
                     offset = int(parse_qs(urlsplit(url).query)['skip'][0])
                     if offset >= 10010:
                         raise HTTPError(url, 400, 'Bad Request', {}, io.BytesIO(b'upstream validation evidence'))
                     if offset >= 9990:
                         return [{'slug': 'Queued'}] * 10, b'[]'
                 return super().get(url)
-        client = Client({'Queued': game('Queued', lf=False)})
-        collect(self.archive, 'base', client=client, max_pages=1, max_downloads=0)
+        client = Client({'Queued': game('Queued')})
+        collect(self.archive, 'lost-fleet', client=client, max_pages=1, max_downloads=0)
         with sqlite3.connect(self.archive/'archive.sqlite3') as db:
-            db.execute('UPDATE scans SET cursor=10010,complete=0 WHERE mode="base"')
+            db.execute('UPDATE scans SET cursor=10010,complete=0 WHERE mode="lost-fleet"')
         before = self.publish()
         prior_rows=self.release_rows()
         atomic_json(self.store/'refresh-status.json', {'last_success':'prior-success'})
@@ -166,16 +166,16 @@ class BackfillFailureTests(unittest.TestCase):
         self.assertEqual(result['last_publication_release'],result['release'])
         self.assertNotEqual(result['release'],before['release'])
         self.assertEqual(client.exports,['Queued'])
-        detail = result['passes']['base']['listing_error_detail']
+        detail = result['passes']['lost-fleet']['listing_error_detail']
         self.assertEqual(detail['http_status'],400)
         self.assertEqual(detail['offset'],10010)
         self.assertEqual(detail['body'],'upstream validation evidence')
         self.assertIn('skip=10010',detail['url'])
-        self.assertEqual(result['passes']['base']['checkpoint'],(10010,0))
-        self.assertEqual(result['passes']['base']['pages'],2)
-        self.assertEqual(result['passes']['base']['queued'],0)
-        with sqlite3.connect(current(self.store)/'base.sqlite') as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM observations WHERE game_id="Queued"').fetchone()[0],4)
+        self.assertEqual(result['passes']['lost-fleet']['checkpoint'],(10010,0))
+        self.assertEqual(result['passes']['lost-fleet']['pages'],2)
+        self.assertEqual(result['passes']['lost-fleet']['queued'],0)
+        lf=json.loads((current(self.store)/'lost-fleet.json').read_text())['rows']
+        self.assertEqual(sum(row['game_id']=='Queued' for row in lf),4)
         saved = json.loads((self.store/'refresh-status.json').read_text())
         self.assertEqual(saved['state'],'degraded')
         self.assertEqual(self.legacy.read_bytes(),self.legacy_bytes)
