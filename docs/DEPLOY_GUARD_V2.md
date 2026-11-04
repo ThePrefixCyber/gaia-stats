@@ -12,12 +12,17 @@ promote it to main or deploy it.
 
 ## Behavior
 
-When a target Git commit has no contract, the existing update path and health
-verification are unchanged. When it has a contract, the running updater reads
+When a target Git commit has no contract, contract validation is skipped and the
+existing update path/health verification remain, subject to the shared refresh
+lock requirement below. When it has a contract, the running updater reads
 that target's contract with `git show` and checks the currently configured data
 as `gaia-stats` **before** checkout, dependency installation or restart. A failure
 retains the running code/data, records failure and does not trigger rollback of
-an unchanged checkout. The existing updater and refresh locks remain in force.
+an unchanged checkout. The updater also holds the release store’s existing `refresh.lock` read-only
+through deployment/rollback. If that store exists, a missing or busy lock aborts
+before status handling; it does not create a root-owned lock or overwrite the
+previous deploy status. A legacy installation without a release store is not
+affected by this additional requirement.
 
 The checker imports no application code or third-party package. It supports
 contract v1 for the earlier scoring migration and contract v2 for static base
@@ -37,6 +42,8 @@ updater's own transient working file; no archive cleanup is performed.
 2. Verify production is still on the expected clean main lineage and record its
    current code SHA, release/cache pointers, data counts and service health.
    Check actual Python is compatible and `gaia-stats` can read the chosen data.
+   If a release store exists, confirm its `refresh.lock` already exists, remains
+   app-writable, and is not held by an active refresh before deployment.
 3. Promote **only this standalone guard branch**. Do not include the combined
    scoring/storage candidate or any data-contract file in this first promotion.
    The normal code-updater pipeline can restart the app; account for that brief
