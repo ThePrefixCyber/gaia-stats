@@ -1,5 +1,8 @@
 # Frequency and opening-tree parity
 
+Historical integration record. Current scoring methodology and remaining parity
+gaps are documented in [the pre-bid chart review](PREBID_CHART_REVIEW.md).
+
 This restores the chart structures in Tim Gladyshev's original notebooks while retaining the corrected cohort, net-score, competition-rank, and shared-win calculations.
 
 ## Tile frequency

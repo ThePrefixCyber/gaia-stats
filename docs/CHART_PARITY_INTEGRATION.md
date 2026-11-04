@@ -1,5 +1,8 @@
 # Reviewed chart parity integration
 
+Historical integration record. Current scoring methodology and remaining parity
+gaps are documented in [the pre-bid chart review](PREBID_CHART_REVIEW.md).
+
 Base: `c7f27f4c3da75041391c825a4cc0bfd29ac6a626`.
 
 Integrated reviewed remote trees:
