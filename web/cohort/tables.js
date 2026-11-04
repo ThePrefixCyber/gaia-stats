@@ -69,7 +69,7 @@
     target.setAttribute('aria-label', title);
     target.tabIndex = 0; // The horizontal scroll region remains keyboard-accessible on small screens.
     const table = make('table');
-    table.className = 'data-table';
+    table.className = 'data-table' + (options.kind === 'final-scoring' ? ' final-scoring-table' : '');
     const caption = make('caption', rows.length
       ? `${integer.format(rows.length)} rows. Select a column heading to sort.`
       : 'No observations match this selection.');

@@ -31,6 +31,8 @@ const setup="import sys,json;sys.path.insert(0,'tests');from test_final_combinat
  assert.equal(values[headings.indexOf('Faction win baseline (%)')],'50%');
  assert.equal(values[headings.indexOf('Win difference (percentage points)')],'25 pp');
  await page.getByText('Exact chart observations',{exact:true}).click();
+ assert.ok(await page.locator('#metrics th').first().evaluate(e=>e.getBoundingClientRect().width>=350));
+ assert.ok(await page.locator('#metrics th').nth(1).evaluate(e=>e.getBoundingClientRect().width>=175));
  const sortButton=page.locator('#metrics th button').filter({hasText:'Win difference (percentage points)'});
  await sortButton.focus();await page.keyboard.press('Enter');
  assert.equal(await sortButton.locator('..').getAttribute('aria-sort'),'ascending');

@@ -79,3 +79,7 @@ footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #d4dee8; fon
   #chart { height: 500px; }
   .data-table td, .sort-button { padding: 10px 12px; }
 }
+
+/* Keep the final-scoring comparison readable; its region handles narrow screens. */
+.final-scoring-table th { min-width: 11rem; }
+.final-scoring-table th:first-child, .final-scoring-table .cell-label { min-width: 22rem; max-width: 28rem; }
