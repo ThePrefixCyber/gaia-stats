@@ -150,6 +150,14 @@ class DataContractTests(unittest.TestCase):
         self.write(path, index); self.rehash()
         with self.assertRaisesRegex(ValueError, 'Invalid LF object index'):self.check()
 
+    def test_contract_schema_requires_exact_supported_integer(self):
+        for invalid in (True, False, 1.0, 2.0, '1', None, 3):
+            with self.subTest(schema_version=invalid):
+                value=dict(self.contract,schema_version=invalid)
+                self.write(self.contract_path,value)
+                with self.assertRaisesRegex(ValueError,'Unsupported deployment contract'):
+                    guard.contract_value(self.contract_path)
+
     def test_storage_contract_requires_static_seed_and_indexed_lf(self):
         self.contract.update(schema_version=2,base_source_policy='original-csv-only-v1',lf_storage='content-addressed-games-v1')
         self.write(self.contract_path,self.contract)

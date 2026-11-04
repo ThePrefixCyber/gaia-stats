@@ -145,7 +145,8 @@ def check_sqlite(path, contract, blocked, label):
 
 def contract_value(path):
     value = read_json(path)
-    require(isinstance(value, dict) and value.get('schema_version') in (1,2), 'Unsupported deployment contract')
+    require(isinstance(value, dict) and type(value.get('schema_version')) is int and
+            value['schema_version'] in (1,2), 'Unsupported deployment contract')
     require(type(value.get('eligibility_policy')) is int and value['eligibility_policy'] > 0, 'Invalid eligibility requirement')
     require(isinstance(value.get('score_basis_version'), str) and value['score_basis_version'], 'Invalid score-basis requirement')
     require(type(value.get('normalization_version')) is int and value['normalization_version'] > 0, 'Invalid normalization requirement')
