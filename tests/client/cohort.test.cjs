@@ -454,3 +454,26 @@ test('restored invalid Elo exits loading accessibly and recovers after correctio
   stale.resolve();await tick();await tick();assert.equal(h.w.testClient.getResult(),null);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');assert.match(h.get('status').textContent,/positive whole-number Elo/);
  }finally{h.close();}
 });
+
+test('native invalid input, Apply click and requestSubmit cancel pending responses before submit',async()=>{
+ for(const action of ['input','click','requestSubmit'])for(const retained of [false,true]){
+  const h=await harness({controlled:true});
+  try{
+   if(retained){await h.flush();h.get('filters').elements.min_elo.value='200';h.get('filters').requestSubmit();await tick();await tick();}
+   const stale=h.pending.shift(),previous=h.w.testClient.getResult(),draws=h.draws.length;
+   const field=h.get('filters').elements.min_elo;field.value='0';
+   let submits=0;h.get('filters').addEventListener('submit',()=>submits++);
+   if(action==='input')field.dispatchEvent(new h.w.Event('input'));
+   else if(action==='click')h.get('filters').querySelector('button').click();
+   else h.get('filters').requestSubmit();
+   await tick();await tick();
+   assert.equal(submits,0,action+' should be stopped by native validation');
+   assert.equal(stale.signal.aborted,true,action);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');
+   const requests=h.requests.length;assert.match(h.get('status').textContent,/positive whole-number Elo/);assert.equal(h.get('csv').getAttribute('href'),null);assert.equal(h.get('elo-error').hidden,false);assert.ok(field.validationMessage);
+   stale.resolve();await tick();await tick();
+   assert.equal(h.w.testClient.getResult(),previous);assert.equal(h.draws.length,draws);assert.equal(h.requests.length,requests);assert.equal(h.get('csv').getAttribute('href'),null);assert.match(h.get('status').textContent,/positive whole-number Elo/);
+   field.value='';field.dispatchEvent(new h.w.Event('input'));h.get('filters').querySelector('button').click();await tick();await tick();await h.flush();
+   assert.equal(submits,1);assert.equal(h.requests.length,requests+1);assert.equal(h.get('elo-error').hidden,true);assert.match(h.get('status').textContent,/ games · /);assert.ok(h.get('csv').getAttribute('href'));
+  }finally{h.close();}
+ }
+});

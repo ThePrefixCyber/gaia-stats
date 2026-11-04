@@ -27,6 +27,14 @@ function save(){if(!loadedMode||form.querySelector('fieldset').disabled)return;m
 function syncVariantControl(){const field=form.elements.lf_2p_4qic_mode;const visible=el('mode').value==='lost-fleet'&&['','2'].includes(form.elements.player_count.value);field.disabled=!visible;field.parentElement.hidden=!visible;}
 function syncLayoutControl(){const field=form.elements.layout;const known=new Set([...field.options].map(option=>option.value).filter(value=>value&&!['unknown','any'].includes(value.trim().toLowerCase())));field.disabled=known.size<=1;field.parentElement.hidden=field.disabled;}
 function validateElo(){const field=form.elements.min_elo;const valid=field.value===''||/^0*[1-9][0-9]*$/.test(field.value);field.setCustomValidity(valid?'':'Enter a positive whole-number Elo, or leave this field empty.');field.setAttribute('aria-invalid',String(!valid));el('elo-error').hidden=valid;return valid;}
+function rejectInvalidElo(){
+ // Native constraint validation may prevent submit entirely. Invalidate pending
+ // work from input/invalid events too, before a late response can restore it.
+ cancelRequest();++generation;el('chart').setAttribute('aria-busy','false');el('csv').removeAttribute('href');
+ el('status').textContent='Enter a positive whole-number Elo, or leave this field empty.'+(result?' Previous results remain visible.':'');
+ if(!result)el('chart').textContent='Correct the Elo field, then apply filters to load the chart.';
+}
+function onEloInput(){if(!validateElo())rejectInvalidElo();}
 function query(){syncVariantControl();syncLayoutControl();const q=new URLSearchParams(new FormData(form));q.set('ruleset',el('mode').value);q.set('plot',el('plot').value);for(const [key,value] of [...q])if(value==='')q.delete(key);return q;}
 function table(target,rows,columns,options){GaiaTables.render(target,rows,columns,options);}
 // Fixed score landmarks: filtering changes the visible range, never a score's
@@ -179,12 +187,7 @@ function renderResult(data,q){
 async function update({refresh=false}={}){
  // A failed/interrupted catalog leaves no valid form for the selected mode.
  if(loadedMode!==el('mode').value)return loadMode();
- if(!validateElo()){
-  cancelRequest();++generation;el('chart').setAttribute('aria-busy','false');el('csv').removeAttribute('href');
-  el('status').textContent='Enter a positive whole-number Elo, or leave this field empty.'+(result?' Previous results remain visible.':'');
-  if(!result)el('chart').textContent='Correct the Elo field, then apply filters to load the chart.';
-  form.elements.min_elo.reportValidity();return;
- }
+ if(!validateElo()){rejectInvalidElo();form.elements.min_elo.reportValidity();return;}
  save();
  const q=query(),key=cacheKey(q),cohort=new URLSearchParams(q);cohort.delete('plot');
  // Repeated clicks while the same request is pending do not queue more work.
@@ -213,7 +216,7 @@ async function update({refresh=false}={}){
   if(current===generation){requestController=null;pendingKey=null;el('chart').setAttribute('aria-busy','false');}
  }
 }
-form.onsubmit=e=>{e.preventDefault();update({refresh:true});};el('plot').onchange=()=>update();form.elements.faction.onchange=()=>update();form.elements.player_count.onchange=syncVariantControl;form.elements.min_elo.oninput=validateElo;form.elements.min_elo.oninvalid=validateElo;
+form.onsubmit=e=>{e.preventDefault();update({refresh:true});};el('plot').onchange=()=>update();form.elements.faction.onchange=()=>update();form.elements.player_count.onchange=syncVariantControl;form.elements.min_elo.oninput=onEloInput;form.elements.min_elo.oninvalid=onEloInput;
 el('frequency-view').onchange=()=>{save();draw();};
 // The form still belongs to loadedMode when the selector changes. Never save
 // half-loaded or disabled fields under a newly selected mode.

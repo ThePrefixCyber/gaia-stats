@@ -160,6 +160,34 @@ class CohortBrowserTests(unittest.TestCase):
         self.assertIn('No observations', self.page.locator('#chart').inner_text())
         self.assertIn('min_elo=99999', self.page.locator('#csv').get_attribute('href'))
 
+    def test_invalid_elo_cancels_pending_work_before_native_submit_validation(self):
+        self.open()
+        for submit in ('click', 'requestSubmit'):
+            gate = self.elo_gates['200'] = threading.Event()
+            self.page.fill('[name=min_elo]', '200')
+            self.page.click('#filters button')
+            self.page.wait_for_function("document.getElementById('chart').getAttribute('aria-busy') === 'true'")
+            self.page.fill('[name=min_elo]', '0')
+            if submit == 'click':
+                self.page.click('#filters button')
+            else:
+                self.page.locator('#filters').evaluate('(form) => form.requestSubmit()')
+            self.assertEqual(self.page.locator('#chart').get_attribute('aria-busy'), 'false')
+            self.assertIn('positive whole-number Elo', self.page.locator('#status').inner_text())
+            self.assertTrue(self.page.locator('#elo-error').is_visible())
+            self.assertTrue(self.page.locator('[name=min_elo]').evaluate('(field) => Boolean(field.validationMessage)'))
+            self.assertIsNone(self.page.locator('#csv').get_attribute('href'))
+            gate.set()
+            self.page.wait_for_timeout(100)
+            self.assertIn('positive whole-number Elo', self.page.locator('#status').inner_text())
+            self.assertIsNone(self.page.locator('#csv').get_attribute('href'))
+            self.assertFalse(any(r.get('min_elo') == '0' for r in self.requests))
+            self.page.fill('[name=min_elo]', '')
+            self.page.click('#filters button')
+            self.ready()
+            self.assertFalse(self.page.locator('#elo-error').is_visible())
+            self.assertIsNotNone(self.page.locator('#csv').get_attribute('href'))
+
     def test_mode_switch_cancels_pending_base_selection(self):
         self.open()
         gate = self.elo_gates['200'] = threading.Event()
