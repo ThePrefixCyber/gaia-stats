@@ -437,3 +437,20 @@ test('Elo text input allows only empty or positive integers and never submits in
   field.value='001';field.dispatchEvent(new h.w.Event('input'));assert.equal(field.checkValidity(),true);
  }finally{h.close();}
 });
+
+test('restored invalid Elo exits loading accessibly and recovers after correction',async()=>{
+ for(const value of ['0','1.5']){
+  const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{min_elo:value}}});
+  try{
+   assert.equal(h.requests.length,0);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');
+   assert.match(h.get('status').textContent,/positive whole-number Elo/);assert.match(h.get('chart').textContent,/Correct the Elo field/);assert.doesNotMatch(h.get('status').textContent,/Loading/);
+   assert.equal(h.get('csv').getAttribute('href'),null);assert.equal(h.get('filters').elements.min_elo.getAttribute('aria-invalid'),'true');
+   h.get('filters').elements.min_elo.value='200';await h.apply();assert.equal(h.requests.length,1);assert.equal(h.requests[0].min_elo,'200');assert.match(h.get('status').textContent,/ games · /);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');
+  }finally{h.close();}
+ }
+ const h=await harness({controlled:true});
+ try{
+  const stale=h.pending.shift();h.get('filters').elements.min_elo.value='0';await h.apply();assert.equal(stale.signal.aborted,true);
+  stale.resolve();await tick();await tick();assert.equal(h.w.testClient.getResult(),null);assert.equal(h.get('chart').getAttribute('aria-busy'),'false');assert.match(h.get('status').textContent,/positive whole-number Elo/);
+ }finally{h.close();}
+});

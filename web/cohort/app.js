@@ -179,7 +179,12 @@ function renderResult(data,q){
 async function update({refresh=false}={}){
  // A failed/interrupted catalog leaves no valid form for the selected mode.
  if(loadedMode!==el('mode').value)return loadMode();
- if(!validateElo()){form.elements.min_elo.reportValidity();return;}
+ if(!validateElo()){
+  cancelRequest();++generation;el('chart').setAttribute('aria-busy','false');el('csv').removeAttribute('href');
+  el('status').textContent='Enter a positive whole-number Elo, or leave this field empty.'+(result?' Previous results remain visible.':'');
+  if(!result)el('chart').textContent='Correct the Elo field, then apply filters to load the chart.';
+  form.elements.min_elo.reportValidity();return;
+ }
  save();
  const q=query(),key=cacheKey(q),cohort=new URLSearchParams(q);cohort.delete('plot');
  // Repeated clicks while the same request is pending do not queue more work.
