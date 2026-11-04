@@ -240,8 +240,12 @@ def response(dataset, path, filters):
     root = Path(__file__).resolve().parent.parent / 'web' / 'cohort'
     if path == '/cohort/':
         return (root / 'index.html').read_bytes(), 'text/html; charset=utf-8'
-    if path == '/cohort/app.js':
-        return (root / 'app.js').read_bytes(), 'application/javascript'
+    assets = {'/cohort/app.js': ('app.js', 'application/javascript'),
+              '/cohort/tables.js': ('tables.js', 'application/javascript'),
+              '/cohort/styles.css': ('styles.css', 'text/css; charset=utf-8')}
+    if path in assets:
+        filename, content_type = assets[path]
+        return (root / filename).read_bytes(), content_type
     if path == '/cohort/api/catalog':
         version=filters.get('ruleset','lost-fleet')
         if version not in ('base','lost-fleet'):raise ValueError('Choose base or lost-fleet')
