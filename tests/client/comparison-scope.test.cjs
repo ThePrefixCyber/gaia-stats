@@ -38,6 +38,9 @@ test('faction changes only the graph cohort, keeping sorted all-faction comparis
     w.eval(readFileSync('web/cohort/tables.js','utf8'));
     w.eval(readFileSync('web/cohort/app.js','utf8')+'\nwindow.currentResult=()=>result;');
     await tick();await tick();
+    assert.match(get('scope').textContent,/Auction type is unavailable/);
+    assert.match(get('scope').textContent,/All dynamic views use pre-bid scores/);
+    assert.doesNotMatch(get('scope').textContent,/Auction metadata is unavailable/);
     const targets=['comparison','tech-comparison'];
     assert.equal(get('round-comparison'),null);assert.equal(get('final-comparison'),null);
     assert.doesNotMatch(w.document.body.textContent,/Round scoring VP|Final scoring VP|four comparison tables/);

@@ -185,7 +185,7 @@ if(window.Plotly){
 function renderResult(data,q){
  result=data;
  el('status').textContent=`${data.games} games · ${data.samples} player-game observations · ${data.missing_elo} missing pregame Elo`;
- el('scope').hidden=el('mode').value==='lost-fleet';el('scope').textContent=el('mode').value==='base'?data.scope+'. Auction metadata is unavailable in these CSVs. All dynamic views use pre-bid scores and exclude whole games with any known pre-bid score below 100 VP.':'';
+ el('scope').hidden=el('mode').value==='lost-fleet';el('scope').textContent=el('mode').value==='base'?data.scope+'. Auction type is unavailable in these CSVs. All dynamic views use pre-bid scores.':'';
  el('csv').href='/cohort/api/export?'+q;
  // Chart changes do not require rebuilding identical comparison tables.
  const signature=JSON.stringify([data.comparisons,data.setup_comparisons.technologies]);

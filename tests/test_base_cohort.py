@@ -42,6 +42,8 @@ class BaseCohortTests(unittest.TestCase):
         self.assertEqual(self.imports[2]['rejected_games'],2)
         self.assertEqual(catalog(self.db)['faction_variant'],['standard','unknown'])
         data=dataset(self.db,{})
+        self.assertIn('pre-bid score below 100 VP',data['scope'])
+        self.assertNotIn('final-score-below',data['scope'])
         self.assertEqual(len(data['rows']),4)
         self.assertEqual(data['rows'][0]['round_one_structures']['PI'],1)
 

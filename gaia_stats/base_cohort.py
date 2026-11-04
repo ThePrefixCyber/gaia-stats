@@ -130,7 +130,7 @@ def iter_rows(path,filters):
             yield json.loads(record[0])
 
 
-SCOPE = 'Historical base CSV cohort; dropped, more-balanced and any final-score-below-100 games excluded; unknown variant values remain unknown'
+SCOPE = 'Historical base CSV cohort; dropped and more-balanced games, plus whole games with any known pre-bid score below 100 VP, excluded; unknown variant values remain unknown'
 
 
 def batches(path, filters, size=1024):
