@@ -15,11 +15,20 @@ def finite(value):
     return isinstance(value, (int, float)) and math.isfinite(value)
 
 
-def observations(data, players, min_elo=None):
-    """One row per eligible player-game; all players must be explicitly not dropped."""
+def complete_frame(data, players):
+    """The same complete eligible games for classic charts and CSV downloads."""
     data = eligible_frame(data)
     mask = data[[f'pos_{p}_dropped' for p in range(1,players+1)]].eq(False).all(axis=1)
     clean = data.loc[mask]
+    columns = [f'pos_{p}_{key}' for p in range(1, players+1) for key in ('score', 'bid')]
+    records = clean.reindex(columns=columns).to_dict(orient='records')
+    complete = [all(finite(csv_score(game, p)) for p in range(1, players+1)) for game in records]
+    return clean.loc[complete]
+
+
+def observations(data, players, min_elo=None):
+    """One row per eligible player-game; all players must be explicitly not dropped."""
+    clean = complete_frame(data, players)
     result=[]
     for index, game in enumerate(clean.to_dict(orient="records")):
         scores=[csv_score(game,p) for p in range(1,players+1)]

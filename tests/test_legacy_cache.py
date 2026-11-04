@@ -143,7 +143,7 @@ class LegacyCacheTests(unittest.TestCase):
         with patch.dict(PLOTS, {'basic-tech-frequency': PLOTS['basic-tech-frequency']}, clear=True), \
                 patch('gaia_stats.legacy_cache.FACTIONS', ('terrans',)):
             catalog = build_cache(self.cache, {4: source})
-        self.assertEqual(catalog['datasets']['4']['games'], 3095)
+        self.assertEqual(catalog['datasets']['4']['games'], 3018)
         self.assertEqual(catalog['datasets']['4']['available'], {'terrans': ['basic-tech-frequency']})
         pointer = json.loads((self.cache / 'current.json').read_text())
         self.assertNotEqual(pointer['build'], 'build-test')
@@ -151,10 +151,19 @@ class LegacyCacheTests(unittest.TestCase):
         self.assertTrue((snapshot / 'plots/4-terrans-basic-tech-frequency.html').exists())
         import pandas as pd
         published = pd.read_csv(snapshot / 'data/4.csv')
-        self.assertEqual(len(published), 3095)
+        self.assertEqual(len(published), 3018)
         self.assertFalse(published.balance_variant.eq('more-balanced').any())
+        self.assertTrue(published[[f'pos_{p}_dropped' for p in range(1, 5)]].eq(False).all(axis=None))
+        from gaia_stats.base_cohort import build
+        import sqlite3
+        seed = self.root / 'seed.sqlite'
+        build({4: source}, seed)
+        with sqlite3.connect(seed) as db:
+            seed_ids = {row[0] for row in db.execute('SELECT DISTINCT game_id FROM observations')}
+        self.assertEqual(set(published.id), seed_ids)
+        self.assertEqual(set(json.loads((snapshot/'eligible-games.json').read_text())['game_ids']), seed_ids)
         self.assertEqual(len(pd.read_csv(source)), 5687)
-        self.assertEqual(catalog['datasets']['4']['excluded_games'], 2592)
+        self.assertEqual(catalog['datasets']['4']['excluded_games'], 2669)
 
     def test_legacy_free_plots_require_recomputed_grouped_cache_not_just_new_labels(self):
         from gaia_stats.technology_locations import FREE_GROUPING_VERSION

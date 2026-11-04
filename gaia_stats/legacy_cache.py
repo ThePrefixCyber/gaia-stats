@@ -17,7 +17,7 @@ import tempfile
 from .__main__ import atomic_json
 from .score_basis import SCORE_BASIS_VERSION
 from .technology_locations import FREE_GROUPING_VERSION
-from .eligibility import POLICY_VERSION, eligible_frame, excluded_csv_game
+from .eligibility import POLICY_VERSION, excluded_csv_game
 
 FACTIONS = ('terrans', 'lantids', 'hadsch-hallas', 'ivits', 'baltaks', 'geodens',
             'xenos', 'gleens', 'ambas', 'taklons', 'bescods', 'firaks', 'itars', 'nevlas')
@@ -49,7 +49,7 @@ def build_cache(cache_root, csv_paths, comparison_path=None, *, excluded_game_id
     that fail never replace the current cache. Prior builds are kept for recovery.
     """
     from .legacy_plots import PLOTS, make_plot
-    from .corrected_plots import observations
+    from .corrected_plots import observations, complete_frame
     import pandas as pd
     from plotly.offline import get_plotlyjs
 
@@ -79,7 +79,7 @@ def build_cache(cache_root, csv_paths, comparison_path=None, *, excluded_game_id
             if frame.empty or not frame['num_players'].eq(players).all():
                 raise ValueError(f'{source}: expected nonempty {players}-player data')
             source_games=len(frame)
-            frame=eligible_frame(frame)
+            frame=complete_frame(frame, players)
             if excluded and 'id' in frame:frame=frame.loc[~frame['id'].isin(excluded)]
             if 'id' not in frame or frame['id'].isna().any():
                 complete_ids = False
