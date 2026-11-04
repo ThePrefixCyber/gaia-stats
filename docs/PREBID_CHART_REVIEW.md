@@ -58,3 +58,31 @@ regression fix does not introduce them:
 Comparing identical prepared observations before and after the pre-bid
 integration confirms the classic round/final matrices were unchanged. These
 remaining presentation differences must not be described as completed parity.
+
+## Production staging: classic download correction
+
+The first production bundle for candidate `26955b4` was not activated. Its charts
+and serving seed excluded dropped games, but classic downloadable CSVs/indexes
+retained 194 additional dropped games (69 two-player, 32 three-player, 93
+four-player). The initial gate checked the cache only against its own metadata,
+so it missed this inconsistency. The source CSVs and raw archive were unchanged.
+
+The corrected cache builds downloads, counts, indexes and charts from the same
+complete-game frame. Source status parsing accepts only the seed importer’s
+literal `False` dropped flags. Unknown/malformed status and incomplete scores
+cannot become eligible through pandas coercion. Whole-game policy exclusion
+records and seed import policy are unchanged; unknown seed auction provenance
+still blocks activation rather than silently dropping source history.
+
+The independently reviewed gate now requires exact per-player-count CSV game
+identities against seed minus verified exclusions, rejects duplicates, missing
+partitions and non-false dropped flags, and verifies SQLite identity columns
+against observation payloads. Old ready markers do not bypass these checks.
+
+Regression verification: the committed original four-player source now produces
+exactly 3,018 games in seed, downloads and classic index (previous download
+3,095). Synthetic 2/3/4-player cases test malformed and missing completion data.
+Full corrected-candidate suites: 302 Python tests and 66 client/frontend tests.
+Standalone guard suite: 226 Python tests. Independent guard review: 24 tests on
+each branch, with no remaining blocker. Production needs a fresh staged bundle
+and the strengthened installed guard before activation; retain the first bundle.
