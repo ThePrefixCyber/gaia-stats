@@ -28,7 +28,7 @@ The class assignment precedence is **ac2, ac1, PI, lab, ts, m**, reflecting the 
 
 Sparse raw reconstruction counts and complete historical CSV counts are normalized into the same exact leaf. Explicit unknown, invalid, fractional, or negative counts are unavailable, not zero. Parent values are sums of their leaves (`branchvalues: total`). Parent score means are weighted by player observations; parent Elo means use only measured ratings and their actual counts. Thus the root/class colors cannot become an unweighted mean of strategy means. Hover labels counts as player observations rather than distinct games.
 
-The historical notebook's score cutoff, low-frequency trimming, and auction-bid add-back are intentionally not restored. All valid selected observations and corrected final net VP remain in use. The score-style helper is left unchanged by this branch so the independently reviewed fixed 0/100/200/above-200 palette can integrate without a conflicting algorithm.
+The historical notebook's player-score cutoff, removal of the bottom 15% of structure-group mean scores, and auction-bid add-back are intentionally not restored. All valid selected observations and corrected final net VP remain in use. The score-style helper is left unchanged by this branch so the independently reviewed fixed 0/100/200/above-200 palette can integrate without a conflicting algorithm.
 
 ## Validation
 
