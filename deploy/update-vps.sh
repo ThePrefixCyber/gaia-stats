@@ -10,13 +10,31 @@ cd /opt/gaia-stats
 # Serialize timer, bootstrap and manual invocations before reading Git state.
 exec 9>/run/lock/gaia-stats-update.lock
 flock -n 9 || { echo 'Another Gaia Stats update is running.' >&2; exit 1; }
+# Pin the data bundle once, then serialize against the scheduled refresh for
+# the entire update. A legacy install without a release store has no such job.
+if [[ -n "${GAIA_DATA_BUNDLE:-}" ]]; then
+    data_bundle="$(readlink -f -- "$GAIA_DATA_BUNDLE")"
+    data_root="$data_bundle/releases-store"
+    data_args=(--bundle "$data_bundle")
+else
+    data_root="${GAIA_RELEASE_ROOT:-/var/lib/gaia-stats/releases-store}"
+    data_args=(--root "$data_root" --seed "${GAIA_SEED_BASE:-/var/lib/gaia-stats/seeds/base.sqlite}" --cache "${GAIA_CLASSIC_CACHE:-/var/lib/gaia-stats/classic-cache}")
+fi
+if [[ -d "$data_root" ]]; then
+    # Never create/truncate an app-owned lock as root: a root-owned new file
+    # would prevent the service account from refreshing after this update.
+    test -f "$data_root/refresh.lock" || { echo 'Release-store refresh lock is missing; prepare the store as gaia-stats first.' >&2; exit 1; }
+    exec 8<"$data_root/refresh.lock"
+    flock -n 8 || { echo 'A Gaia Stats data refresh is running; code was not changed.' >&2; exit 1; }
+fi
 status_path=/var/lib/gaia-stats/deploy-status.json
 previous="$(git rev-parse HEAD)"
 target="$previous"
 changed=0
 # Keep this verifier available even if rollback restores code predating it.
 verifier="$(mktemp)"
-trap 'rm -f "$verifier"' EXIT
+contract_file="$(mktemp)"
+trap 'rm -f "$verifier" "$contract_file"' EXIT
 cp deploy/verify-health.py "$verifier"
 
 write_status() {
@@ -58,6 +76,15 @@ test -z "$(git status --porcelain --untracked-files=no)"
 git fetch origin main
 git merge-base --is-ancestor HEAD origin/main
 target="$(git rev-parse origin/main)"
+# This guard must be deployed independently BEFORE a target declares a new data
+# contract. The already-running old updater cannot protect its own first update.
+# Inspect the target without checking it out, and never activate unprepared code.
+contract_entry="$(git ls-tree "$target" -- deploy/data-contract.json)"
+if [[ -n "$contract_entry" ]]; then
+    git show "$target:deploy/data-contract.json" > "$contract_file"
+    chmod 0644 "$contract_file"
+    runuser -u gaia-stats -- python3 deploy/check-data-contract.py --contract "$contract_file" "${data_args[@]}"
+fi
 if [[ "$previous" == "$target" && "$bootstrap" == 0 ]]; then
     python3 "$verifier" "$target"
     write_status up-to-date

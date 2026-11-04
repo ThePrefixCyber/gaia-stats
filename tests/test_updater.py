@@ -75,12 +75,13 @@ class HealthVerificationTests(unittest.TestCase):
 
 
 class UpdaterTests(unittest.TestCase):
-    def run_update(self, scenario, bootstrap=False, locked=False):
+    def run_update(self, scenario, bootstrap=False, locked=False, data_locked=False):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / 'bin').mkdir()
             (root / '.venv/bin').mkdir(parents=True)
             (root / 'deploy').mkdir()
+            (root / 'releases-store').mkdir()
             (root / 'deploy/verify-health.py').write_text('# mocked verifier\n')
             dataset = root / 'analysis.json'
             dataset.write_bytes(b'production-data-must-survive')
@@ -94,6 +95,7 @@ class UpdaterTests(unittest.TestCase):
             script = script.replace('/var/lib/gaia-stats/deploy-status.json', folder + '/status.json')
             script = script.replace('/var/lib/gaia-stats/analysis.json', str(dataset))
             script = script.replace('/run/lock/gaia-stats-update.lock', folder + '/lock')
+            script = script.replace('/var/lib/gaia-stats/releases-store', folder + '/releases-store')
             (root / 'update.sh').write_text(script)
             mock = '''#!/bin/bash
 name="${0##*/}"
@@ -103,12 +105,14 @@ case "$name" in
   case "$*" in
    'rev-parse HEAD') echo previous;;
    'rev-parse origin/main') if [[ "$SCENARIO" == unchanged* ]]; then echo previous; else echo target; fi;;
+   'ls-tree target -- deploy/data-contract.json') [[ \"$SCENARIO\" != contract-probe-fails ]] || exit 1; [[ \"$SCENARIO\" != contract* ]] || echo '100644 blob abc deploy/data-contract.json';;
+   'show target:deploy/data-contract.json') echo '{}';;
    'status --porcelain --untracked-files=no') [[ "$SCENARIO" != dirty ]] || echo ' M tracked';;
    'merge-base --is-ancestor HEAD origin/main') [[ "$SCENARIO" != divergent ]];;
    'reset --hard previous') rm -f deploy/verify-health.py; [[ "$SCENARIO" != reset-fails ]];;
   esac;;
  pip) [[ "$SCENARIO" != dependencies-fail ]];;
- runuser) [[ "$SCENARIO" != tests-fail && "$SCENARIO" != reset-fails && "$SCENARIO" != restart-fails && "$SCENARIO" != rollback-health-fails ]];;
+ runuser) [[ "$SCENARIO" != contract-unready && "$SCENARIO" != tests-fail && "$SCENARIO" != reset-fails && "$SCENARIO" != restart-fails && "$SCENARIO" != rollback-health-fails ]];;
  systemctl) [[ "$SCENARIO" != restart-fails ]];;
  python3)
   if [[ "$1" == - ]]; then exec REAL_PYTHON "$@"; fi
@@ -122,9 +126,13 @@ esac
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(root / 'bin') + ':' + os.environ['PATH'],
                        CALL_LOG=str(root / 'calls'), SCENARIO=scenario)
-            with (root / 'lock').open('w') as lock:
+            with (root / 'lock').open('w') as lock, (root / 'releases-store/refresh.lock').open('w') as data_lock:
                 if locked:
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if data_locked:
+                    fcntl.flock(data_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if scenario == 'missing-refresh-lock':
+                    (root/'releases-store/refresh.lock').unlink()
                 result = subprocess.run(['bash', str(root / 'update.sh')] + (['--bootstrap'] if bootstrap else []),
                                         env=env, capture_output=True, text=True, timeout=10)
             self.assertEqual(dataset.read_bytes() if dataset.exists() else None, before_data)
@@ -178,6 +186,36 @@ esac
         self.assertEqual(code, 1)
         self.assertIsNone(status)
         self.assertEqual(calls, '')
+
+    def test_data_refresh_lock_prevents_checkout_and_all_external_actions(self):
+        code, status, calls = self.run_update('success', data_locked=True)
+        self.assertEqual(code, 1)
+        self.assertIsNone(status)
+        self.assertEqual(calls, '')
+
+    def test_missing_refresh_lock_fails_without_creating_root_owned_file(self):
+        code, status, calls = self.run_update('missing-refresh-lock')
+        self.assertEqual(code, 1)
+        self.assertIsNone(status)
+        self.assertEqual(calls, '')
+
+    def test_target_contract_is_checked_before_checkout_or_restart(self):
+        code, status, calls = self.run_update('contract-ready')
+        self.assertEqual((code, status['state']), (0, 'deployed'))
+        self.assertLess(calls.index('deploy/check-data-contract.py'), calls.index('git merge --ff-only'))
+        self.assertIn('--root ', calls)
+        for scenario in ('contract-unready', 'contract-probe-fails'):
+            code, status, calls = self.run_update(scenario)
+            self.assertEqual((code, status['state']), (1, 'failed'))
+            self.assertNotIn('git merge --ff-only', calls)
+            self.assertNotIn('git reset', calls)
+            self.assertNotIn('pip install', calls)
+            self.assertNotIn('systemctl restart', calls)
+
+    def test_no_contract_target_remains_backward_compatible(self):
+        code, status, calls = self.run_update('success')
+        self.assertEqual((code, status['state']), (0, 'deployed'))
+        self.assertNotIn('deploy/check-data-contract.py', calls)
 
 
 class BootstrapTests(unittest.TestCase):
