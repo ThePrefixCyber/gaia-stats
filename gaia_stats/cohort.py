@@ -153,9 +153,18 @@ def statistics(rows, kind):
                 for index, tile in enumerate(row['round_scorings']):
                     groups[(f'Round {index + 1}', tile)].append(row)
             else:
-                groups[tuple(sorted(row['final_scorings']))].append(row)
-        cells = [{'label': ' / '.join(key), 'x': key[0], 'y': key[1], **summary(group)}
-                 for key, group in sorted(groups.items())]
+                pair = tuple(sorted(row['final_scorings']))
+                groups[(pair, row['player_count'], row['faction'])].append(row)
+        if kind == 'final-scoring':
+            cells = [{'label': f"{count}p: {' + '.join(pair)} / {faction}",
+                      'x': f"{count}p: {' + '.join(pair)}", 'y': faction,
+                      'tiles': list(pair), 'player_count': count, 'faction': faction,
+                      **summary(group)}
+                     for (pair, count, faction), group in sorted(groups.items())]
+            cells.sort(key=lambda cell: (cell['x'], cell['y']))
+        else:
+            cells = [{'label': ' / '.join(key), 'x': key[0], 'y': key[1], **summary(group)}
+                     for key, group in sorted(groups.items())]
     else:
         sources = sorted({key for row in rows for key in row['vp_sources']})
         # Absence in a complete reconciled ledger is an observed zero.
@@ -174,7 +183,7 @@ def statistics(rows, kind):
     if kind in ('round-scoring','final-scoring'):
         value_label='Mean VP earned from scoring tile(s)'
         for cell in cells:
-            group=groups[(cell['x'],cell['y'])]
+            group=groups[(tuple(cell['tiles']),cell['player_count'],cell['faction'])] if kind=='final-scoring' else groups[(cell['x'],cell['y'])]
             keys=[f"round{cell['x'].split()[-1]}"] if kind=='round-scoring' else ['final1','final2']
             values=[sum(tile_value(r,k) for k in keys) for r in group if all(tile_value(r,k) is not None for k in keys)]
             cell['mean_final_score']=cell['mean_score']
@@ -182,21 +191,68 @@ def statistics(rows, kind):
             cell['score_samples']=len(values)
         required=[f'round{i}' for i in range(1,7)] if kind=='round-scoring' else ['final1','final2']
         unavailable=sum(any(tile_value(r,k) is None for k in required) for r in rows)
+    final_note = (' Select a faction to compare final tile pairs. VP difference uses all factions with the same pair and player count; '
+                  'win difference uses this faction and player count across all pairs, relaxing final-tile filters only. '
+                  'Both baselines retain ruleset, Elo and other selected settings. '
+                  'Net-score shared wins split ties; these descriptive differences are not causal tile effects.') if kind=='final-scoring' else ''
     return {'kind': kind, 'cells': cells, 'unavailable_records': unavailable,
             'value_label':value_label,
-            'note': value_label+('; mean_final_score separately reports conditional final net VP' if kind in ('round-scoring','final-scoring') else '')+'. Net-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'}
+            'note': value_label+('; mean_final_score separately reports conditional final net VP' if kind in ('round-scoring','final-scoring') else '')+'. Net-score competition ranks and shared wins. Descriptive associations, not causal recommendations.'+final_note}
 
 
-def report(dataset, filters):
+def final_reference_filters(filters):
+    """Relax only the dimensions explicitly required by the comparison baselines."""
+    return {k: v for k, v in filters.items() if k not in ('faction','final_scoring','final_scoring2')}
+
+
+def final_scoring_comparison(plot, filters):
+    """Finish after all batches: never average per-batch differences/baselines."""
+    cells = plot['cells']
+    if not filters.get('faction'):
+        return {**plot, 'cells': [], 'selection_required': 'faction'}
+    pair_totals = defaultdict(lambda: [0, 0])
+    faction_totals = defaultdict(lambda: [0, 0])
+    for cell in cells:
+        pair = (tuple(cell['tiles']),cell['player_count'])
+        if cell['mean_score'] is not None:
+            pair_totals[pair][0] += cell['mean_score'] * cell['score_samples']
+            pair_totals[pair][1] += cell['score_samples']
+        faction = (cell['faction'],cell['player_count'])
+        faction_totals[faction][0] += cell['win_share'] * cell['samples']
+        faction_totals[faction][1] += cell['samples']
+    selected=[]
+    for cell in cells:
+        if cell['faction'] != filters['faction'] or any(filters.get(k) and filters[k] not in cell['tiles'] for k in ('final_scoring','final_scoring2')):
+            continue
+        score_total, score_n = pair_totals[(tuple(cell['tiles']),cell['player_count'])]
+        wins, win_n = faction_totals[(cell['faction'],cell['player_count'])]
+        score_base = score_total / score_n if score_n else None
+        win_base = wins / win_n if win_n else None
+        selected.append({**cell, 'score_baseline':score_base,'score_baseline_samples':score_n,
+                         'win_baseline':win_base,'win_baseline_samples':win_n,
+                         'score_difference':cell['mean_score']-score_base if cell['mean_score'] is not None and score_base is not None else None,
+                         'win_difference':cell['win_share']-win_base if win_base is not None else None})
+    return {**plot, 'cells':selected, 'selection_required':None}
+
+
+def report(dataset, filters, *, finalize=True):
     rows = cohort(dataset, filters)
     groups = defaultdict(list)
     for row in rows:
         groups[row['faction']].append(row)
+    plots = {}
+    for kind in ([filters['plot']] if filters.get('plot') else PLOTS):
+        if kind == 'final-scoring':
+            plot = statistics(cohort(dataset, final_reference_filters(filters)), kind)
+            plot['unavailable_records'] = sum(any(tile_value(r,k) is None for k in ('final1','final2')) for r in rows)
+            plots[kind] = final_scoring_comparison(plot, filters) if finalize else plot
+        else:
+            plots[kind] = statistics(rows, kind)
     return {'ruleset': filters['ruleset'], 'filters': filters, **summary(rows),
             'record_ids': [f"{r['game_id']}:{r['faction']}" for r in rows] if len(rows)<=2000 else None,
             'cohort_hash': hashlib.sha256('\n'.join(sorted(f"{r['game_id']}:{r['faction']}" for r in rows)).encode()).hexdigest(),
             'missing_elo': sum(r['elo'] is None for r in rows),
-            'plots': {kind: statistics(rows, kind) for kind in ([filters['plot']] if filters.get('plot') else PLOTS)},
+            'plots': plots,
             'comparisons': [{'faction': faction, **summary(group)} for faction, group in sorted(groups.items())],
             'setup_comparisons': setup_comparisons(groups),
             'scope': dataset.get('scope')}

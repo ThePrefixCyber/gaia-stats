@@ -126,7 +126,11 @@ def dataset(path,filters):
 def response(path, route, filters):
     from . import streaming_cohort
     if route=='/cohort/api/stats':
-        result=streaming_cohort.statistics(batches(path,filters),filters,SCOPE)
+        # Final-scoring baselines need other factions; output cohort/CSV stays selected.
+        read_filters = dict(filters)
+        if filters.get('plot') in (None, 'final-scoring'):
+            read_filters.pop('faction', None)
+        result=streaming_cohort.statistics(batches(path,read_filters),filters,SCOPE)
         return json.dumps(result,allow_nan=False).encode(),'application/json'
     if route=='/cohort/api/export':
         return streaming_cohort.csv_export(batches(path,filters),filters),'text/csv; charset=utf-8'

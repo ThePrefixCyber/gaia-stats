@@ -44,9 +44,9 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(ivits['scoring_vp']['final1'],0)
         self.assertEqual(ivits['scoring_vp']['final2'],0)
         self.assertEqual(ivits['scoring_vp']['round2'],0)
-        result=statistics(rows,'final-scoring')['cells'][0]
-        self.assertEqual(result['score_samples'],4)
-        self.assertEqual(result['mean_score'],18)  # (0 + 12 + 24 + 36) / 4
+        cells=statistics(rows,'final-scoring')['cells']
+        self.assertEqual([c['score_samples'] for c in cells],[1]*4)
+        self.assertEqual(sorted(c['mean_score'] for c in cells),[0,12,24,36])
         historical=copy.deepcopy(ivits)
         historical.pop('scoring_vp');historical['vp_ledger_complete']=False
         historical['vp_sources'].pop('final1')
@@ -59,10 +59,12 @@ class ScoringTests(unittest.TestCase):
         rows=normalize(load('Jubilant-rover-3041'))
         finals=statistics(rows,'final-scoring')
         self.assertEqual(finals['value_label'],'Mean VP earned from scoring tile(s)')
-        cell=finals['cells'][0]
-        self.assertEqual(cell['mean_score'],18)
-        self.assertEqual(cell['score_samples'],4)
-        self.assertEqual(cell['mean_final_score'],139.75)
+        self.assertEqual(len(finals['cells']),4)
+        for cell in finals['cells']:
+            row=next(r for r in rows if r['faction']==cell['faction'])
+            self.assertEqual(cell['mean_score'],row['scoring_vp']['final1']+row['scoring_vp']['final2'])
+            self.assertEqual(cell['score_samples'],1)
+            self.assertEqual(cell['mean_final_score'],row['score'])
         rounds=statistics(rows,'round-scoring')['cells']
         self.assertEqual([c['mean_score']for c in rounds],[4.5,3.75,3.75,5,4,5])
         self.assertTrue(all(c['score_samples']==4 for c in rounds))
@@ -71,7 +73,8 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual((hh['round1'],hh['round1_n']),(0,1))
         for slug,expected in [('Admirable-falcon-401',24),('Eclipsed-council-7948',30)]:
             rows=normalize(load(slug))
-            self.assertEqual(statistics(rows,'final-scoring')['cells'][0]['mean_score'],expected)
+            cells=statistics(rows,'final-scoring')['cells']
+            self.assertEqual(sum(c['mean_score'] for c in cells)/len(cells),expected)
 
     def test_ambiguous_phase_and_unmapped_sources_never_invent_scoring(self):
         payload=load('Silly-rocket-2154')

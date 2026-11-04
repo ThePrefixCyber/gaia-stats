@@ -100,3 +100,14 @@ class BaseCohortTests(unittest.TestCase):
         with sqlite3.connect(self.root/'archive/archive.sqlite3') as db:
             queued={r[0] for r in db.execute('SELECT slug FROM exports')}
         self.assertEqual(queued,{r['_id'] for r in page})
+
+    def test_final_scoring_baselines_load_other_factions_but_export_stays_selected(self):
+        filters={'ruleset':'base','plot':'final-scoring','faction':'terrans','final_scoring':'gaia'}
+        status,body=self.request('/cohort/api/stats',filters)
+        self.assertEqual(status,'200 OK')
+        expected=report(dataset(self.db,{}),filters)
+        actual=json.loads(body)
+        self.assertEqual(actual['plots']['final-scoring'],json.loads(json.dumps(expected['plots']['final-scoring'])))
+        self.assertTrue(all(c['score_baseline_samples']>c['score_samples'] for c in actual['plots']['final-scoring']['cells']))
+        _,raw=self.request('/cohort/api/export',filters)
+        self.assertEqual(raw,export(dataset(self.db,{}),filters))
