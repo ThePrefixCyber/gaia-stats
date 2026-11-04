@@ -66,7 +66,7 @@ class PunctuationIntegrationTests(unittest.TestCase):
                 self.assertEqual(fetch_games([identifier],destination),1)
             self.assertEqual(saved.read_bytes(),before)
 
-    def test_lookahead_next_page_cursor_restart_publication_and_cache_refresh(self):
+    def test_base_archive_cursor_restart_preserves_static_publication_and_cache(self):
         self.publish();prior=current(self.store);old_ids=base_ids(prior/'base.sqlite')
         seed=self.seed.read_bytes();app=ReleaseApplication(self.store)
         def stats():
@@ -96,10 +96,12 @@ class PunctuationIntegrationTests(unittest.TestCase):
             provenance=json.loads((self.archive/'base/provenance'/(identifier+'.json')).read_text())
             self.assertTrue(provenance['url'].endswith(url_segment(identifier)))
         self.publish()
-        self.assertTrue(old_ids<=base_ids(current(self.store)/'base.sqlite'))
-        after=stats();self.assertIsNot(app.app,old_app)
-        self.assertEqual(after['samples'],before['samples']+4*len(slugs))
+        self.assertEqual(current(self.store),prior)
+        self.assertEqual(old_ids,base_ids(current(self.store)/'base.sqlite'))
+        after=stats();self.assertIs(app.app,old_app)
+        self.assertEqual(after,before)
         for identifier in (BRACKET,BACKTICK,DASHES):
-            self.assertTrue(any(value.startswith(identifier+':') for value in after['record_ids']))
+            self.assertFalse(any(value.startswith(identifier+':') for value in after['record_ids']))
+            self.assertEqual(json.loads((self.archive/'base/raw'/(identifier+'.json')).read_text())['slug'],identifier)
         self.assertEqual(self.seed.read_bytes(),seed)
         self.assertEqual(self.legacy.read_bytes(),self.legacy_bytes)

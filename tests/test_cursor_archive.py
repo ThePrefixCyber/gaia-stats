@@ -11,6 +11,7 @@ from unittest.mock import patch
 from gaia_stats.archive import collect,listing_cursor
 from gaia_stats.refresh import run
 from gaia_stats.releases import current
+from gaia_stats.release_data import load_dataset
 from test_archive import FakeClient,game
 import test_releases
 
@@ -236,7 +237,7 @@ class CursorRefreshTests(unittest.TestCase):
         self.assertEqual({p:p.read_bytes() for p in (self.archive/'base').rglob('*') if p.is_file()},base_files)
         with sqlite3.connect(current(self.store)/'base.sqlite') as db:
             self.assertEqual(db.execute('SELECT * FROM observations ORDER BY game_id,faction').fetchall(),base_rows)
-        lf=json.loads((current(self.store)/'lost-fleet.json').read_text())['rows']
+        lf=load_dataset(current(self.store)/'lost-fleet.json')['rows']
         self.assertEqual(sum(row['game_id']=='LF' for row in lf),4)
         # Later refreshes keep collecting new LF games without redownloading old ones.
         client.games['LF-next']=game('LF-next')
@@ -245,3 +246,9 @@ class CursorRefreshTests(unittest.TestCase):
         self.assertEqual(again['state'],'ok')
         self.assertEqual(client.exports,['LF','LF-next'])
         self.assertEqual(base_checkpoint(),checkpoint)
+        lf=load_dataset(current(self.store)/'lost-fleet.json')['rows']
+        self.assertEqual(sum(row['game_id']=='LF' for row in lf),4)
+        self.assertEqual(sum(row['game_id']=='LF-next' for row in lf),4)
+        with sqlite3.connect(current(self.store)/'base.sqlite') as db:
+            self.assertEqual(db.execute('SELECT * FROM observations ORDER BY game_id,faction').fetchall(),base_rows)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM observations WHERE game_id="Base-kept"').fetchone()[0],0)

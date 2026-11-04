@@ -116,10 +116,13 @@ class IdentifierPublicationTests(unittest.TestCase):
         raw=self.archive/'base/raw'/(HISTORICAL_ID+'.json')
         self.assertEqual(json.loads(raw.read_text())['slug'],HISTORICAL_ID)
         candidate=self.publish()
-        self.assertNotEqual(candidate['release'],before['release'])
-        self.assertTrue(base_ids(prior/'base.sqlite')<=base_ids(current(self.store)/'base.sqlite'))
+        self.assertEqual(candidate['release'],before['release'])
+        self.assertEqual(candidate['datasets'],before['datasets'])
+        self.assertEqual(current(self.store),prior)
+        self.assertEqual(base_ids(prior/'base.sqlite'),base_ids(current(self.store)/'base.sqlite'))
         with sqlite3.connect(current(self.store)/'base.sqlite') as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM observations WHERE game_id=?',(HISTORICAL_ID,)).fetchone()[0],4)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM observations WHERE game_id=?',(HISTORICAL_ID,)).fetchone()[0],0)
+        self.assertEqual(json.loads(raw.read_text())['slug'],HISTORICAL_ID)
         self.assertEqual(self.seed.read_bytes(),seed)
         self.assertEqual(self.legacy.read_bytes(),self.legacy_bytes)
 

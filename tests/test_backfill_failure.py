@@ -39,6 +39,8 @@ class BackfillFailureTests(unittest.TestCase):
             client=FakeClient({'Kept-'+mode:game('Kept-'+mode,lf=mode=='lost-fleet')})
             collect(self.archive,mode,client=client,max_pages=1,max_downloads=1)
         first=self.publish();before=self.release_rows()
+        self.assertFalse(any(key[1]=='Kept-base' for key in before))
+        self.assertEqual(sum(key[1]=='Kept-lost-fleet' for key in before),4)
         raw={p:p.read_bytes() for p in self.archive.glob('*/raw/*.json')}
         seed=self.seed.read_bytes()
         atomic_json(self.store/'refresh-status.json',{'last_success':'old-success',
@@ -175,7 +177,7 @@ class BackfillFailureTests(unittest.TestCase):
         self.assertEqual(result['passes']['lost-fleet']['checkpoint'],(10010,0))
         self.assertEqual(result['passes']['lost-fleet']['pages'],2)
         self.assertEqual(result['passes']['lost-fleet']['queued'],0)
-        lf=json.loads((current(self.store)/'lost-fleet.json').read_text())['rows']
+        lf=load_dataset(current(self.store)/'lost-fleet.json')['rows']
         self.assertEqual(sum(row['game_id']=='Queued' for row in lf),4)
         saved = json.loads((self.store/'refresh-status.json').read_text())
         self.assertEqual(saved['state'],'degraded')
