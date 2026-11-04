@@ -131,11 +131,19 @@ class CorrectedOpeningHierarchyTests(unittest.TestCase):
     def test_representative_hierarchy_matches_historical_without_old_score_math(self):
         frame=self.frame([(150,{'m':2,'PI':1}),(150,{'m':2,'PI':1}),
                           (150,{'m':2,'lab':1}),(150,{'m':1,'ts':2}),(150,{'m':3})])
+        # Tim's notebook requires the faction to occur in both positions.
+        frame['pos_2_bid']=20;frame['pos_2_score_bid']=-20
+        frame.loc[frame.index % 2 == 1,['pos_1_faction','pos_2_faction']]=['xenos','terrans']
         original=make_plot('round-one-structures',frame,players=2,faction='terrans',methodology='historical').data[0]
         corrected=make_plot('round-one-structures',frame,players=2,faction='terrans').data[0]
         def hierarchy(trace):
-            return {(str(label).strip(),str(parent).strip()):int(value)
-                    for label,parent,value in zip(trace.labels,trace.parents,trace.values)}
+            # Plotly Express uses a descriptive root title in its IDs; compare
+            # the actual label paths, allowing only that root presentation text.
+            nodes=dict(zip(trace.ids,zip(trace.labels,trace.parents,trace.values)))
+            def path(identity):
+                label,parent,_=nodes[identity]
+                return (*path(parent),str(label).strip()) if parent else ('faction',)
+            return {path(identity):int(value) for identity,(_,_,value) in nodes.items()}
         self.assertEqual(hierarchy(corrected),hierarchy(original))
         self.assertTrue(all(score==170 for score in corrected.customdata))
 
