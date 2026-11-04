@@ -204,20 +204,29 @@ def report(dataset, filters):
 
 def setup_comparisons(groups):
     result={'rounds':[], 'finals':[], 'technologies':[]}
-    for faction,rows in sorted(groups.items()):
-        for kind,keys in (('rounds',[f'round{i}' for i in range(1,7)]),('finals',['final1','final2'])):
-            record={'faction':faction,'samples':len(rows)}
+    scoring_keys = {'rounds': tuple(f'round{i}' for i in range(1, 7)),
+                    'finals': ('final1', 'final2')}
+    slots = tuple('adv-' + slot for slot in ('terra', 'nav', 'int', 'gaia', 'eco', 'sci', 'ext'))
+    for faction, rows in sorted(groups.items()):
+        # Visit each observation once instead of rescanning its technology list
+        # for every track and looking up each measured tile value twice.
+        values = {key: [] for keys in scoring_keys.values() for key in keys}
+        acquired = {slot: [] for slot in slots}
+        for row in rows:
+            for key, observations in values.items():
+                value = tile_value(row, key)
+                if value is not None:
+                    observations.append(value)
+            for slot in {tech['slot'] for tech in (row.get('owned_technologies') or [])}:
+                if slot in acquired:
+                    acquired[slot].append(row['score'])
+        for kind, keys in (*scoring_keys.items(), ('technologies', slots)):
+            record = {'faction': faction, 'samples': len(rows)}
             for key in keys:
-                values=[tile_value(r,key) for r in rows if tile_value(r,key) is not None]
-                record[key]=mean(values) if values else None
-                record[key+'_n']=len(values)
+                observations = acquired[key] if kind == 'technologies' else values[key]
+                record[key] = mean(observations) if observations else None
+                record[key + '_n'] = len(observations)
             result[kind].append(record)
-        record={'faction':faction,'samples':len(rows)}
-        for slot in ('adv-terra','adv-nav','adv-int','adv-gaia','adv-eco','adv-sci','adv-ext'):
-            taken=[r['score'] for r in rows if any(t['slot']==slot for t in (r.get('owned_technologies') or []))]
-            record[slot]=mean(taken) if taken else None
-            record[slot+'_n']=len(taken)
-        result['technologies'].append(record)
     return result
 
 

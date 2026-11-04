@@ -32,6 +32,7 @@ class Application:
         self.base_cohort = Path(base_cohort) if base_cohort else None
         self.cohort_lock = Lock()
         self.cohort_cache = OrderedDict()
+        self.cache_lock = Lock()
         self.cohort_cache_bytes = 0
         self.lock = Lock()
         self.dataset = None
@@ -43,6 +44,9 @@ class Application:
             ingest(sorted(fixtures.glob("*.json")), self.path)
 
     def load(self):
+        return self.load_snapshot()[0]
+
+    def load_snapshot(self):
         with self.lock:
             info = self.path.stat()
             version = (info.st_mtime_ns, info.st_size)
@@ -51,7 +55,7 @@ class Application:
                 if candidate.get("schema_version") != 1 or not isinstance(candidate.get("rows"), list):
                     raise ValueError("Unsupported dataset")
                 self.dataset, self.version = candidate, version
-            return self.dataset
+            return self.dataset, self.version
 
     def cohort_response(self, path, filters):
         from .cohort import response
@@ -63,31 +67,58 @@ class Application:
             raise ValueError('Unsupported cohort filter')
         if filters.get('player_count') and filters['player_count'] not in ('2','3','4'):
             raise ValueError('Choose 2, 3 or 4 players')
-        # Serialize expensive work per worker. Cache only bounded JSON responses, not rows.
+        # The shell and script do not use cohort data. Never queue them behind
+        # an expensive calculation or decode the LF dataset just to serve bytes.
+        if path in ('/cohort/', '/cohort/app.js', '/cohort/tables.js', '/cohort/styles.css'):
+            return response({}, path, filters)
+        is_base = filters.get('ruleset') == 'base' and path.startswith('/cohort/api/')
+        if is_base:
+            if self.base_cohort is None:
+                raise ValueError('Base cohort database not configured')
+            from . import base_cohort
+            if path == '/cohort/api/catalog':
+                return json.dumps(base_cohort.catalog(self.base_cohort)).encode(), 'application/json'
+            filters = dict(filters)
+            if path == '/cohort/api/stats':
+                filters.setdefault('plot', 'advanced-tech-frequency')
+
+        def snapshot():
+            if is_base:
+                stat = self.base_cohort.stat()
+                return ('base', stat.st_mtime_ns, stat.st_size), None
+            dataset, version = self.load_snapshot()
+            return ('lf', version), dataset
+
+        def cached(key):
+            with self.cache_lock:
+                if key in self.cohort_cache:
+                    self.cohort_cache.move_to_end(key)
+                    return self.cohort_cache[key]
+            return None
+
+        version, dataset = snapshot()
+        key = (version, path, tuple(sorted(filters.items())))
+        hit = cached(key)
+        if hit is not None:
+            return hit
+        # Only cache misses serialize expensive work. Hits must not wait behind
+        # another user's cold query. Recheck after waiting for a concurrent fill
+        # or dataset change; retain bounded JSON only, never decoded base rows.
         with self.cohort_lock:
-            if filters.get('ruleset')=='base' and path.startswith('/cohort/api/'):
-                if self.base_cohort is None:raise ValueError('Base cohort database not configured')
-                from . import base_cohort
-                stat=self.base_cohort.stat()
-                version=('base',stat.st_mtime_ns,stat.st_size)
-                if path=='/cohort/api/catalog':
-                    return json.dumps(base_cohort.catalog(self.base_cohort)).encode(),'application/json'
-                filters=dict(filters)
-                if path=='/cohort/api/stats':filters.setdefault('plot','advanced-tech-frequency')
-                get_data=lambda:base_cohort.dataset(self.base_cohort,filters)
-            else:
-                dataset=self.load();version=('lf',self.version)
-                get_data=lambda:dataset
-            key=(version,path,tuple(sorted(filters.items())))
-            if key in self.cohort_cache:
-                self.cohort_cache.move_to_end(key)
-                return self.cohort_cache[key]
-            result=(base_cohort.response(self.base_cohort,path,filters) if version[0]=='base'
-                    else response(get_data(),path,filters))
-            if path=='/cohort/api/stats' and len(result[0])<=2*1024*1024:
-                self.cohort_cache[key]=result;self.cohort_cache_bytes+=len(result[0])
-                while len(self.cohort_cache)>8 or self.cohort_cache_bytes>16*1024*1024:
-                    _,old=self.cohort_cache.popitem(last=False);self.cohort_cache_bytes-=len(old[0])
+            version, dataset = snapshot()
+            key = (version, path, tuple(sorted(filters.items())))
+            hit = cached(key)
+            if hit is not None:
+                return hit
+            result = (base_cohort.response(self.base_cohort, path, filters) if is_base
+                      else response(dataset, path, filters))
+            if path == '/cohort/api/stats' and len(result[0]) <= 2 * 1024 * 1024:
+                with self.cache_lock:
+                    self.cohort_cache[key] = result
+                    self.cohort_cache_bytes += len(result[0])
+                    while len(self.cohort_cache) > 8 or self.cohort_cache_bytes > 16 * 1024 * 1024:
+                        _, old = self.cohort_cache.popitem(last=False)
+                        self.cohort_cache_bytes -= len(old[0])
             return result
 
     def __call__(self, environ, start_response):

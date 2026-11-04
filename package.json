@@ -1,0 +1,10 @@
+{
+  "name": "gaia-stats-client-tests",
+  "private": true,
+  "scripts": {
+    "test:client": "node --test tests/client/*.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}
