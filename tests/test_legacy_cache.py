@@ -165,6 +165,51 @@ class LegacyCacheTests(unittest.TestCase):
         self.assertEqual(len(pd.read_csv(source)), 5687)
         self.assertEqual(catalog['datasets']['4']['excluded_games'], 2669)
 
+    def test_download_and_seed_share_explicit_completion_rules(self):
+        import csv
+        import sqlite3
+        from gaia_stats.base_cohort import build
+        from gaia_stats.corrected_plots import complete_frame
+        import pandas as pd
+        source = Path(__file__).resolve().parents[1] / 'data/remote_four_players_data.csv'
+        with source.open(newline='') as handle:
+            template = next(row for row in csv.DictReader(handle)
+                            if row['id'] not in ('', None) and
+                            all(row[f'pos_{p}_dropped']=='False' and float(row[f'pos_{p}_score'])>=100
+                                for p in range(1, 5)) and row.get('balance_variant')!='more-balanced')
+        for players in (2, 3, 4):
+            with self.subTest(players=players):
+                rows=[]
+                for name,flag in [('keep','False'),('dropped','True'),('blank',''),
+                                  ('lowercase','false'),('upper','FALSE'),('zero','0'),('unknown','unknown')]:
+                    row=dict(template,id=f'{players}-{name}',num_players=players)
+                    row['pos_1_dropped']=flag
+                    rows.append(row)
+                missing=dict(rows[0],id=f'{players}-missing-score',pos_1_score='')
+                rows.append(missing)
+                path=self.root/f'completion-{players}.csv'
+                with path.open('w',newline='') as handle:
+                    writer=csv.DictWriter(handle,fieldnames=template.keys());writer.writeheader();writer.writerows(rows)
+                before=path.read_bytes()
+                seed=self.root/f'completion-{players}.sqlite'
+                build({players:path},seed)
+                with patch('gaia_stats.legacy_cache.FACTIONS', ()):
+                    catalogue=build_cache(self.cache,{players:path})
+                snapshot=self.cache/json.loads((self.cache/'current.json').read_text())['build']
+                with (snapshot/'data'/f'{players}.csv').open(newline='') as handle:
+                    exported=list(csv.DictReader(handle))
+                with sqlite3.connect(seed) as db:
+                    expected={row[0] for row in db.execute('SELECT DISTINCT game_id FROM observations')}
+                self.assertEqual(expected,{f'{players}-keep'})
+                self.assertEqual({row['id'] for row in exported},expected)
+                self.assertEqual(catalogue['datasets'][str(players)]['games'],1)
+                self.assertEqual(path.read_bytes(),before)
+        # In-memory callers must not treat malformed numeric flags as False.
+        frame=pd.DataFrame([dict(template, num_players=4, pos_1_dropped=flag,
+                                 **{f'pos_{p}_dropped':False for p in (2,3,4)})
+                            for flag in (False,True,None,0,'False')])
+        self.assertEqual(len(complete_frame(frame,4)),1)
+
     def test_legacy_free_plots_require_recomputed_grouped_cache_not_just_new_labels(self):
         from gaia_stats.technology_locations import FREE_GROUPING_VERSION
         for kind in ('basic-tech-score', 'point-sources'):

@@ -18,7 +18,8 @@ def finite(value):
 def complete_frame(data, players):
     """The same complete eligible games for classic charts and CSV downloads."""
     data = eligible_frame(data)
-    mask = data[[f'pos_{p}_dropped' for p in range(1,players+1)]].eq(False).all(axis=1)
+    mask = data[[f'pos_{p}_dropped' for p in range(1,players+1)]].apply(
+        lambda column: column.map(lambda value: value is False)).all(axis=1)
     clean = data.loc[mask]
     columns = [f'pos_{p}_{key}' for p in range(1, players+1) for key in ('score', 'bid')]
     records = clean.reindex(columns=columns).to_dict(orient='records')

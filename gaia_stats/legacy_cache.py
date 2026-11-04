@@ -75,11 +75,18 @@ def build_cache(cache_root, csv_paths, comparison_path=None, *, excluded_game_id
             if players not in (2, 3, 4):
                 raise ValueError('CSV player counts must be 2, 3 or 4')
             source = Path(source)
-            frame = pd.read_csv(source)
+            # Match the seed import's exact CSV status spelling. Pandas' default
+            # bool coercion would also accept lower-case strings or numeric zero.
+            frame = pd.read_csv(source, converters={
+                f'pos_{p}_dropped': lambda value: value != 'False'
+                for p in range(1, players+1)})
             if frame.empty or not frame['num_players'].eq(players).all():
                 raise ValueError(f'{source}: expected nonempty {players}-player data')
             source_games=len(frame)
-            frame=complete_frame(frame, players)
+            try:
+                frame=complete_frame(frame, players)
+            except KeyError as error:
+                raise ValueError(f"Missing historical column: {error}") from error
             if excluded and 'id' in frame:frame=frame.loc[~frame['id'].isin(excluded)]
             if 'id' not in frame or frame['id'].isna().any():
                 complete_ids = False
