@@ -212,3 +212,10 @@ test('failed catalog can retry without saving the previous mode form', async()=>
  const h=await harness({url,rememberedMode});try{assert.equal(h.get('mode').value,expected);assert.deepEqual([...h.get('mode').options].map(o=>o.text),['Lost Fleet • Live','Base Game • Static']);await h.select('mode',expected==='base'?'lost-fleet':'base');assert.equal(h.w.sessionStorage.getItem('gaia-cohort-mode'),h.get('mode').value);}finally{h.close();}
  }
  });
+
+ test('more-balanced is never offered or restored; 4-QIC selection remains independent',async()=>{
+ const old=fixtures['lost-fleet'].catalog.faction_variant;fixtures['lost-fleet'].catalog.faction_variant=[...old,'more-balanced'];
+ const h=await harness({url:'http://localhost/',memories:{'lost-fleet':{faction_variant:'more-balanced',lf_2p_4qic_mode:'variant-only'}}});
+ try{const fields=h.get('filters').elements;assert.ok(![...fields.faction_variant.options].some(o=>o.value==='more-balanced'));assert.equal(fields.faction_variant.value,'');assert.equal(fields.lf_2p_4qic_mode.value,'variant-only');assert.equal(h.requests.at(-1).lf_2p_4qic_mode,'variant-only');assert.notEqual(h.requests.at(-1).faction_variant,'more-balanced');}
+ finally{h.close();fixtures['lost-fleet'].catalog.faction_variant=old;}
+ });
