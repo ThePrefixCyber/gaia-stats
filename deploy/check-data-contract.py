@@ -192,6 +192,10 @@ def check(contract_path, root, seed, cache):
     seed_counts = check_sqlite(seed, contract, set(), 'Seed')
     with sqlite3.connect(seed.as_uri() + '?mode=ro', uri=True) as db:
         imports = json.loads(metadata(db).get('imports', '{}'))
+        seed_games = {}
+        for game_id, players in db.execute("SELECT DISTINCT game_id,json_extract(payload,'$.player_count') FROM observations"):
+            if game_id not in blocked:
+                seed_games.setdefault(str(players), set()).add(game_id)
     require(isinstance(imports, dict) and bool(imports) and all(key in ('2', '3', '4') for key in imports), 'Seed source-player-count provenance is missing')
     base_counts = check_sqlite(release / 'base.sqlite', contract, blocked, 'Base release')
     if contract['schema_version']==2:
@@ -228,10 +232,14 @@ def check(contract_path, root, seed, cache):
         require(isinstance(imports[players], dict) and re.fullmatch(r'[a-f0-9]{64}', str(imports[players].get('sha256'))) is not None, 'Invalid seed source hash')
         require(summary.get('sha256') == imports[players]['sha256'], 'Classic cache source hash differs from rebuilt seed')
         count = 0
+        downloaded_ids = set()
         with (build / 'data' / (players + '.csv')).open(newline='') as handle:
             for game in csv.DictReader(handle):
                 require(game.get('id') in cached_ids and game.get('id') not in blocked, 'Classic CSV identity/exclusion mismatch')
                 require(game.get('num_players') == players, 'Classic CSV player count mismatch')
+                require(game['id'] not in observed_ids, 'Classic CSV repeats a game identity')
+                require(all(game.get(f'pos_{p}_dropped') == 'False' for p in range(1, int(players)+1)),
+                        'Classic CSV contains dropped or unknown-status players')
                 require(game.get('balance_variant') != 'more-balanced', 'Classic CSV contains excluded faction variant')
                 for position in range(1, int(players) + 1):
                     try:
@@ -240,8 +248,10 @@ def check(contract_path, root, seed, cache):
                     except (KeyError, TypeError, ValueError):
                         raise ValueError('Classic CSV missing aligned score/auction cost') from None
                     require(math.isfinite(reported) and math.isfinite(bid) and bid >= 0 and reported + bid >= contract['minimum_score'], 'Classic CSV has an ineligible or unknown pre-bid score')
-                observed_ids.add(game['id']); count += 1
+                observed_ids.add(game['id']); downloaded_ids.add(game['id']); count += 1
         require(count == summary.get('games'), 'Classic CSV count mismatch')
+        require(downloaded_ids == seed_games.get(players, set()),
+                'Classic CSV games do not exactly match the original CSV seed minus verified exclusions')
         for faction, plots in summary.get('available', {}).items():
             require(re.fullmatch(r'[a-z0-9-]+', faction) is not None, 'Invalid cached faction')
             for plot in plots:

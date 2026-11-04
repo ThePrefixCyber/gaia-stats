@@ -52,8 +52,8 @@ class DataContractTests(unittest.TestCase):
         (self.build/'plots/2-terrans-point-sources.html').write_text('<html>ready</html>')
         with (self.build/'data/2.csv').open('w') as handle:
             writer = csv.writer(handle)
-            writer.writerow(['id','num_players','balance_variant','pos_1_score','pos_1_bid','pos_2_score','pos_2_bid'])
-            writer.writerow(['base',2,'standard',75,50,150,0])
+            writer.writerow(['id','num_players','balance_variant','pos_1_score','pos_1_bid','pos_2_score','pos_2_bid','pos_1_dropped','pos_2_dropped'])
+            writer.writerow(['base',2,'standard',75,50,150,0,False,False])
 
     def write(self, path, data):
         Path(path).write_text(json.dumps(data))
@@ -248,6 +248,48 @@ class DataContractTests(unittest.TestCase):
         chart.write_text('<html>ready</html>')
         csv_path=self.build/'data/2.csv';csv_path.write_text(csv_path.read_text().replace('75,50','75,0'))
         with self.assertRaisesRegex(ValueError,'ineligible'):self.check()
+
+    def test_classic_download_rejects_dropped_and_unknown_status(self):
+        path = self.build/'data/2.csv'
+        original = path.read_text()
+        for status in ('True', '', 'unknown'):
+            with self.subTest(status=status):
+                path.write_text(original.replace('False,False', 'False,'+status))
+                with self.assertRaisesRegex(ValueError, 'dropped or unknown-status'):
+                    self.check()
+        path.write_text(original)
+        self.check()
+
+    def test_classic_download_requires_exact_seed_game_ids_not_only_counts(self):
+        path = self.build/'data/2.csv'
+        original = path.read_text()
+        path.write_text(original.replace('base,2,', 'extra,2,'))
+        self.write(self.build/'eligible-games.json', {'complete':True, 'game_ids':['extra']})
+        with self.assertRaisesRegex(ValueError, 'exactly match'):
+            self.check()
+        path.write_text(original.splitlines()[0]+'\n')
+        self.write(self.build/'eligible-games.json', {'complete':True, 'game_ids':[]})
+        self.catalogue['datasets']['2']['games'] = 0
+        self.write(self.build/'manifest.json', self.catalogue)
+        with self.assertRaisesRegex(ValueError, 'exactly match'):
+            self.check()
+
+    def test_classic_download_rejects_additional_self_consistent_game(self):
+        path = self.build/'data/2.csv'
+        path.write_text(path.read_text()+path.read_text().splitlines()[1].replace('base,2,','extra,2,')+'\n')
+        self.catalogue['datasets']['2']['games'] = 2
+        self.write(self.build/'manifest.json', self.catalogue)
+        self.write(self.build/'eligible-games.json', {'complete':True, 'game_ids':['base','extra']})
+        with self.assertRaisesRegex(ValueError, 'exactly match'):
+            self.check()
+
+    def test_classic_download_rejects_duplicate_games_even_with_matching_counts(self):
+        path = self.build/'data/2.csv'
+        path.write_text(path.read_text()+path.read_text().splitlines()[1]+'\n')
+        self.catalogue['datasets']['2']['games'] = 2
+        self.write(self.build/'manifest.json', self.catalogue)
+        with self.assertRaisesRegex(ValueError, 'repeats a game'):
+            self.check()
 
     def test_cli_bundle_resolution_and_unsafe_pointer(self):
         active=self.bundle/'active';active.symlink_to(self.bundle,target_is_directory=True)
