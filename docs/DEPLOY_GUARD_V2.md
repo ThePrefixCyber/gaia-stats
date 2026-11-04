@@ -67,3 +67,24 @@ updater's own transient working file; no archive cleanup is performed.
 A missing/incorrect bundle path, old score provenance, old inline LF format or
 raw-merged base must block combined-code activation. Fix those prerequisites
 through the reviewed staging procedure rather than weakening the gate.
+
+## Classic export parity follow-up
+
+The first production staging run found 194 dropped games in classic CSV downloads
+that were absent from the seed/serving cohort. Charts already excluded them. The
+initial checker compared the classic cache only to its own index and counts, so
+that inconsistent bundle passed the earlier gate. It must not be activated.
+
+The follow-up checker requires every downloaded game to have explicit `False`
+dropped flags, rejects duplicate identities, and compares exact per-player-count
+IDs with the immutable seed minus verified exclusions. All observed seed player
+counts must have source provenance, and the full classic ID union must match too.
+Unknown scores/bids still fail the independent score checks. This is only a
+read-only gate change; it changes neither production data nor statistical policy.
+
+Deploy and verify this strengthened checker separately before the corrected
+candidate. Confirm it rejects the earlier staged bundle without modifying it.
+Then stage the fixed candidate into a fresh bundle, preserving both the earlier
+attempt and original archive. A previous `preparation.json` ready marker is not
+proof that the stronger parity checks passed. Verify the new checker passes the
+new bundle and review 2/3/4-player IDs/counts before activation.
