@@ -1,7 +1,7 @@
 // New frontend for the original site's published aggregate-data contract.
 const comparisonRounds=['2vp_per_terra','2vp_per_research_bump','2vp_per_mine_place','5vp_per_fed_place','4vp_per_ts_place','4vp_per_gaia_place','5vp_per_3pip_place','3vp_per_ts_place','3vp_per_gaia_place'];
 const comparisonTechs=['3vp_per_fed_pass','2vp_per_tech_bump','1qic_5c_action','2vp_per_mine','3vp_per_rl_pass','1o_per_sector','1vp_per_terra_pass','2vp_per_gaia','4vp_per_ts','2vp_per_sector','3o_action','5vp_per_fed','3k_action','3vp_per_mine_place','3vp_per_ts_place'];
-const comparisonFinals=[['planetType','Planet types'],['structure','Structures'],['sector','Sectors'],['satellite','Satellites'],['gaia','Gaia planets'],['structureFed','Structures in federations']];
+const comparisonFinals=[['planetType','Planet types'],['structure','Structures'],['sector','Sectors'],['satellite','Satellites (including Ivits space stations)'],['gaia','Gaia planets'],['structureFed','Structures in federations']];
 const comparisonTracks=['Terraforming','Navigation','Artificial intelligence','Gaia project','Economy','Science'];
 const ce=id=>document.getElementById(id);
 function selectField(parent,label,name,options,index=0){const wrap=document.createElement('label');wrap.textContent=label;const select=document.createElement('select');select.name=name;select.setAttribute('aria-label',label);for(const o of options){const [value,text]=Array.isArray(o)?o:[o,o];select.add(new Option(name.startsWith('adv_')?GaiaTiles.label('advanced',value):name.startsWith('round_')?GaiaTiles.label('round',value):text,value));}select.selectedIndex=index;wrap.append(select);parent.append(wrap);return select;}

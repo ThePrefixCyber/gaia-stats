@@ -19,4 +19,9 @@ assert.match(T.metric('point-sources','booster6'),/pass: 1 VP per mine/);
 assert.match(T.metric('point-sources','qic2'),/rescore one owned federation token/);
 assert.match(T.metric('basic-tech-frequency','ship-tech-resource / rebellion'),/Immediate: gain 1 ore and 3 knowledge.*\[rebellion\]/);
 assert.notEqual(T.label('round','score7'),T.label('round','score10'));
-console.log('18 presentation assertions passed');
+for (const i of [1,2,3]) {
+  assert.equal(T.position('free'+i),`Free position ${i} [free${i}]`);
+  assert.equal(T.position('tech-free'+i),`Free position ${i} [tech-free${i}]`);
+}
+assert.match(T.label('final','satellite'),/including Ivits space stations/);
+console.log('25 presentation assertions passed');

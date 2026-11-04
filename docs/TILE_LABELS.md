@@ -43,6 +43,9 @@ Important distinctions:
 - Space-sector effects follow BGS's exclusion of Deep Space for the base sector
   tiles. BGS documents this as a site-owner ruling; it is not presented here as
   a verified official-rule clarification.
+- Satellite final scoring includes Ivits space stations: BGS `player.ts:1184–1185`
+  adds `buildings[Building.SpaceStation]` to `data.satellites`, and
+  `tiles/scoring.ts:32` uses that condition for the satellite objective.
 - `piAcademyDistance` is the distance to the **farthest** academy, not a sum.
 
 Federation tokens, artifacts and power actions currently have no separate tile

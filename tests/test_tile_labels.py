@@ -39,6 +39,7 @@ class TileLabelTests(unittest.TestCase):
         self.assertIn('charge 1 power',self.labels['basic']['tech5']['description'])
         self.assertEqual(self.labels['round']['score7']['description'],self.labels['round']['score10']['description'])
         self.assertNotIn('adv-terra',advanced)
+        self.assertIn('including Ivits space stations',self.labels['final']['satellite']['description'])
 
     def test_aliases_match_committed_tim_parser(self):
         notebook=json.loads((ROOT/'parse_jsons.ipynb').read_text())

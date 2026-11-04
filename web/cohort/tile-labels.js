@@ -10,7 +10,7 @@ window.GaiaTiles = (() => {
   }
   function position(id) {
     const track = id.replace(/^(adv-|tech-)/, '');
-    return (tracks[track] ? tracks[track] + ' position' : 'Position') + ` [${id}]`;
+    return (tracks[track] ? tracks[track] + (/^free[123]$/.test(track) ? '' : ' position') : 'Position') + ` [${id}]`;
   }
   function metric(kind, value) {
     if (kind.includes('tech-')) {
