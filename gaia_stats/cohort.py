@@ -237,8 +237,12 @@ def final_scoring_comparison(plot, filters):
 
 def report(dataset, filters, *, finalize=True):
     rows = cohort(dataset, filters)
+    # Persistent faction comparisons retain the setup and every other filter,
+    # but the chart, selected-cohort summary and export still honor faction.
+    comparison_rows = (cohort(dataset, {k: v for k, v in filters.items() if k != 'faction'})
+                       if filters.get('faction') else rows)
     groups = defaultdict(list)
-    for row in rows:
+    for row in comparison_rows:
         groups[row['faction']].append(row)
     plots = {}
     for kind in ([filters['plot']] if filters.get('plot') else PLOTS):

@@ -89,7 +89,9 @@ def statistics(batches, filters, scope):
                     plot_cells[kind][key].add(cell)
             if kind == 'point-sources':
                 prior_complete += complete
-    if not identifiers:
+    # A selected faction can have no rows while other factions still supply
+    # valid comparison tables. Only a genuinely empty input needs this fallback.
+    if not plot_meta:
         return report({'rows': [], 'scope': scope}, filters)
     plots = {}
     for kind, meta in plot_meta.items():

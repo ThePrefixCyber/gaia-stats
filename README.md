@@ -28,8 +28,11 @@ The significant two-player LF **4-QIC → technology** variant has three choices
 explicit BGS option metadata, not faction names. The default excludes that
 variant; it does not remove ordinary three- and four-player LF games.
 
-All eight chart views use the same selected cohort as the faction comparisons,
-round/final/advanced-tech tables and selected player-game CSV:
+All eight chart views and the selected player-game CSV honor the faction filter.
+The four always-visible faction, round/final VP and advanced-tech comparison
+tables include all factions, retaining every other selected filter and scoring
+setup. Selecting a faction with no graph observations can still leave valid
+comparison rows for other factions. Chart views include:
 
 - Basic and advanced technology acquisition frequencies and mean-score plots.
 - Round-one structure treemap.
