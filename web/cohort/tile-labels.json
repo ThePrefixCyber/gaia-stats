@@ -347,7 +347,7 @@
     "piAcademyDistance": {
       "description": "Greatest distance from planetary institute to farthest academy",
       "aliases": [],
-      "short": "PI\u2013Farthest AC Distance"
+      "short": "PI–Farthest AC Distance"
     }
   },
   "booster": {
@@ -446,17 +446,52 @@
     "qic1": {
       "description": "Pay 4 QIC: gain a technology tile",
       "aliases": [],
-      "short": "4q \u2192 Tech"
+      "short": "4q → Tech"
     },
     "qic2": {
       "description": "Pay 3 QIC: rescore one owned federation token",
       "aliases": [],
-      "short": "3q \u2192 Re-score Fed"
+      "short": "3q → Re-score Fed"
     },
     "qic3": {
       "description": "Pay 2 QIC: gain 3 VP plus 1 VP per colonized planet type",
       "aliases": [],
-      "short": "2q \u2192 Planet VP"
+      "short": "2q → Planet VP"
+    },
+    "power1": {
+      "description": "Pay 7 power: gain 3 knowledge",
+      "aliases": [],
+      "short": "7pw → 3k"
+    },
+    "power2": {
+      "description": "Pay 5 power: gain 2 free terraforming steps",
+      "aliases": [],
+      "short": "5pw → 2tf"
+    },
+    "power3": {
+      "description": "Pay 4 power: gain 2 ore",
+      "aliases": [],
+      "short": "4pw → 2o"
+    },
+    "power4": {
+      "description": "Pay 4 power: gain 7 credits",
+      "aliases": [],
+      "short": "4pw → 7c"
+    },
+    "power5": {
+      "description": "Pay 4 power: gain 2 knowledge",
+      "aliases": [],
+      "short": "4pw → 2k"
+    },
+    "power6": {
+      "description": "Pay 3 power: gain 1 free terraforming step",
+      "aliases": [],
+      "short": "3pw → 1tf"
+    },
+    "power7": {
+      "description": "Pay 3 power: gain 2 new power tokens",
+      "aliases": [],
+      "short": "3pw → 2pwt"
     }
   }
 }

@@ -38,10 +38,18 @@ window.GaiaTiles = (() => {
     if (/^final[12]$/.test(value)) return 'Final '+value.slice(-1);
     return ({terra:'Terra Research',nav:'Nav Research',int:'Artificial Intelligence Research',gaia:'Gaia Research',eco:'Econ Research',sci:'Sci Research',tfmars:'TF Mars',rebellion:'Rebellion',eclipse:'Eclipse',twilight:'Twilight',init:'Starting VP',initial:'Starting VP',bid:'Auction',charge:'Power Charge',research:'Research',tech_score:'Research',resource:'Resources',round:'Round Scoring',final:'Final Scoring',booster:'Booster Pass',tech_basic:'Basic Tech',adv:'Advanced Tech',fed:'Federation',federation:'Federation',qic:'QIC Actions',build:'Building',explore:'Exploration',spend:'Spending',gleens:'Gleens'})[value] || 'Other VP';
   }
+  // Move text is display-only. Replace whole identifier tokens, never substrings
+  // inside game IDs, coordinates or other words. Preserve quantities and order.
+  const moveTileLabels = {"tinkering-step1":"1tf Action","tinkering-power4":"4pw Action","tinkering-qic1":"1q Action","tinkering-step3":"3tf Action","tinkering-knowledge3":"3k Action","tinkering-qic2":"2q Action","fed1": "12vp (Gray)", "fed2": "8vp1q", "fed3": "8vp2pwt", "fed4": "7vp2o", "fed5": "7vp6c", "fed6": "6vp2k", "ship-fed-credit": "8vp8c", "ship-fed-knowledge": "4vp4k", "ship-fed-orequic": "4vp2o1q", "ship-fed-power": "7vp + 2pwt Area III", "ship-fed-range": "Unlimited Range Mine", "ship-fed-tech": "Tech Tile", "ship-fed-terraform": "3tf Mine", "ship-fed-vp": "12vp (Green)", "artifact-knowledgeore": "1k1o Income", "artifact-credit": "3c3o", "artifact-knowledgeqic": "3k1q", "artifact-creditlarge": "5c2o", "artifact-power": "2pwt Area III Income", "artifact-asteroid": "7vp + Virtual Asteroid Mine", "artifact-protoplanet": "7vp + Virtual Protoplanet Mine", "artifact-researchlevel": "3vp / Sci Level", "artifact-researchtracks": "3vp / Track at Level 3+", "artifact-federation": "Re-score Fed", "artifact-gaiaproject": "3vp / Gaia Level", "artifact-planettypes": "3vp + 1vp / Planet Type", "artifact-deepspace": "3vp / Deep Space Sector"};
   function move(text){
-    let result=text.replace(/\b(?:advtech(?:[0-9]+|-[a-z]+)|tech[0-9]+|ship-tech-[a-z]+)\b/g,id=>label(id.startsWith('adv')?'advanced':'basic',id));
-    result=result.replace(/\btech (free[123]|terra|nav|int|gaia|eco|sci|tfmars|eclipse|rebellion|twilight)\b/g,(_,slot)=>'Tech '+position(slot));
-    return result.replace(/\bup (terra|nav|int|gaia|eco|sci)\b/g,(_,slot)=>'Research '+position(slot));
+    let result=text.replace(/\bspaceshipAction (rebellion|tfmars|eclipse|twilight) (qic|power|credit)\b/g,(_,ship,action)=>position(ship)+' '+({qic:'QIC',power:'Power',credit:'Credit'})[action]+' action');
+    result=result.replace(/\b(tech|cover|up) ((?:adv-|tech-)?(?:free[123]|terra|nav|int|gaia|eco|sci|ext)|tfmars|eclipse|rebellion|twilight)\b/g,(_,command,slot)=>({tech:'Tech',cover:'Cover',up:'Research'})[command]+' '+position(slot));
+    return result.replace(/\b[A-Za-z][A-Za-z0-9-]*\b/g,token=>{
+      if(moveTileLabels[token])return moveTileLabels[token];
+      for(const category of ['basic','advanced','booster','action'])if(registry[category][token])return label(category,token);
+      if(['rebellion','tfmars','eclipse','twilight'].includes(token))return position(token);
+      return ({chooseTinkeringTile:'Choose tinkering tile',spaceshipAction:'Ship action',examineArtifact:'Examine artifact',chooseArtifactToken:'Choose artifact',gaiaFormTransdim:'Gaiaform Transdim',fedtile:'Federation token'})[token]||token;
+    });
   }
   function legacy(kind){
     for(const graph of document.querySelectorAll('.js-plotly-plot')){

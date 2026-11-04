@@ -25,7 +25,12 @@ Reviewed against BGS source at commit
 - `engine/src/tiles/boosters.ts`: incomes, pass scoring and special actions.
 - `engine/src/tiles/scoring.ts`, `engine/src/enums.ts`, and the final-scoring
   implementation in `engine/src/player.ts`: round tiles and final objectives.
-- `engine/src/actions.ts`: numbered QIC actions in VP source data.
+- `engine/src/actions.ts`: numbered power/QIC actions.
+- `engine/src/tiles/federations.ts`, `spaceship-federations.ts`, `artifacts.ts`,
+  and `engine/src/factions.ts`: Opening Explorer move tokens, including
+  federation rewards, artifacts and Tinkeroids special-action tiles.
+  Whole-token substitutions preserve resource quantities, coordinates and move
+  order; ship actions retain their Power/Credit/QIC action type.
 - The committed `parse_jsons.ipynb`: Tim's aliases, retained as identifiers.
 
 Lost Fleet cross-check: [publisher rulebook](https://capstone-games.com/cdn/shop/files/GP_Exp_Rule_EN_V1_Web.pdf?v=6134275372584409409).
