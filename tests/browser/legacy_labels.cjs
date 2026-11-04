@@ -28,6 +28,11 @@ for(const [kind,item] of Object.entries(pages)){
  await page.goto('http://legacy.test/'+kind);await page.waitForTimeout(300);
  const data=await page.locator('.js-plotly-plot').evaluate(e=>e.data);
  data.forEach((t,i)=>{for(const key of ['x','y','z','customdata'])assert.deepEqual(t[key],item.data[i][key],kind+' '+key);});
+ if(kind==='point-sources'){
+  const expected=item.data.map(t=>t.name);assert.equal(new Set(expected).size,4);assert.ok(expected.every(n=>/^bid-restored order [1-4] \(ties broken by original player order\)$/.test(n)));
+  assert.deepEqual(data.map(t=>t.name),expected,'finishing-order identities and historical tie convention survive');
+  assert.deepEqual(await page.locator('.legendtext').allTextContents(),expected,'actual rendered legend preserves all four finishing orders');
+ }
  const text=await page.locator('.js-plotly-plot').innerText();assert.doesNotMatch(text,/advtech\d|tech\d|ship-tech-|_per_|Unknown location/);
 }
 assert.deepEqual(errors,[]);console.log('Seven actual cached plot families relabelled without changing coordinates, values or sample metadata');
