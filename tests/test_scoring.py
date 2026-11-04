@@ -24,7 +24,7 @@ def load(slug):
 class ScoringTests(unittest.TestCase):
     def test_base_categories_and_phase_specific_research(self):
         rows=normalize(load('Silly-rocket-2154'));terrans=rows[0]
-        expected={'init':10,'bid':0,'charge':-8,'booster':26,'fed':22,'adv':12,
+        expected={'init':10,'charge':-8,'booster':26,'fed':22,'adv':12,
                   'tech_basic':0,'qic':9,'gaia':0,'gleens':0,'resource':2,'research':20,
                   'round1':4,'round2':4,'round3':3,'round4':5,'round5':0,'round6':2,'final1':18,'final2':12}
         self.assertEqual(terrans['vp_sources'],expected)
@@ -36,7 +36,7 @@ class ScoringTests(unittest.TestCase):
         for row in rows+[raw]:
             self.assertTrue(row['vp_ledger_complete'])
             self.assertEqual(sum(row['vp_sources'].values()),row['score'])
-            self.assertEqual(sum(row['vp_sources_raw'].values()),row['score'])
+            self.assertEqual(sum(row['vp_sources_raw'].values()),row['reported_score'])
 
     def test_complete_base_zero_rounds_and_finals_but_historical_unknown(self):
         rows=normalize(load('Shiny-cypress-1384'));ivits=rows[0]

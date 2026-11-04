@@ -31,7 +31,7 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual({r["game_id"] for r in rows if r["score"] == 194}, {"Jubilant-rover-3041"})
 
     def test_base_and_expansion_never_mix(self):
-        rows = normalize(fixture()) + normalize(fixture("Modern-riddle-1723"))
+        rows = normalize(fixture()) + normalize(fixture("cohort/Shiny-cypress-1384"))
         self.assertEqual(len(select(rows, {"ruleset": "base"})), 4)
         self.assertEqual(len(select(rows, {"ruleset": "lost-fleet"})), 4)
         for filters in ({}, {"ruleset": "all"}):
@@ -61,14 +61,15 @@ class AnalysisTests(unittest.TestCase):
         self.assertFalse(any(move.startswith("tinkeroids charge ") for move in row["opening_moves"]))
         self.assertEqual(len(select([row], {"ruleset": "lost-fleet", "official_center_sectors": "true"})), 1)
 
-    def test_actual_rank_uses_net_score_not_bid_adjusted_score(self):
+    def test_rank_uses_prebid_score_and_preserves_reported_result(self):
         rows = normalize(fixture("Modern-riddle-1723"))
-        self.assertEqual([r["rank"] for r in rows], [1, 2, 3, 4])
+        self.assertEqual([r["rank"] for r in rows], [2, 1, 3, 4])
         self.assertEqual([r["bid"] for r in rows], [0, 17, 18, 0])
 
     def test_ties_share_win_and_rank(self):
         game = fixture()
-        for p in game["players"]:
+        for pos,p in enumerate(game["players"]):
+            game["data"]["advancedLog"].append({"player":pos,"changes":{"test-adjustment":{"vp":200-p["score"]}}})
             p["score"] = 200
         rows = normalize(game)
         self.assertEqual([r["rank"] for r in rows], [1, 1, 1, 1])
@@ -160,7 +161,7 @@ class AnalysisTests(unittest.TestCase):
 class HTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        rows = normalize(fixture()) + normalize(fixture("Modern-riddle-1723"))
+        rows = normalize(fixture()) + normalize(fixture("cohort/Shiny-cypress-1384"))
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for({"rows": rows, "rejected": []}))
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()

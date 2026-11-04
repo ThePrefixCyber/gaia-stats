@@ -26,6 +26,12 @@ within the browser session. Player counts are 4 (default), 3, 2 and Any. The LF
 multiple known layouts are available. Hidden controls do not add request filters;
 their previous selections are retained for when they apply again.
 
+Games explicitly marked **more-balanced** are excluded site-wide, in both base
+and Lost Fleet modes. They are not a selectable cohort. Unknown or missing variant
+metadata stays unknown and is not assumed to be more-balanced. Original exports,
+source CSVs and prior releases are retained for audit/recovery. See
+[GAME_ELIGIBILITY.md](docs/GAME_ELIGIBILITY.md) for metadata and cache migration.
+
 The significant two-player LF **4-QIC → technology** variant has three choices:
 **standard only** (default), **both**, and **variant only**. Classification uses
 explicit BGS option metadata, not faction names. The default excludes that
@@ -48,20 +54,27 @@ can be sorted using their heading buttons (click, Enter or Space). A second
 activation reverses direction; missing measurements stay last. Each table keeps
 its sort when filters refresh. Percentages, VP and sample counts are formatted
 for readability; numeric sorts use the unrounded values. Separate historical wide-CSV
-links are explicitly **unfiltered** and do not reflect current selections.
+links do not reflect current UI selections, but also exclude more-balanced games.
 
-Current views use one player-game observation, actual final net VP, competition
-ranks and shared credit for tied wins. Auction bids are not added back to rank
-players. Round/final heatmaps show VP earned from the tile or final tile pair in
+Every statistical view and export excludes the entire game when any player has
+an observed score before auction bids below 100 VP. Exactly 100 is retained; missing scores
+are not treated as zero. This mandatory rule is applied before faction and Elo
+filters, in both modes, alongside the more-balanced exclusion. Raw source data
+remains preserved for audit. See [game eligibility](docs/GAME_ELIGIBILITY.md).
+
+Current views use one player-game observation, pre-bid VP, competition
+ranks and shared credit for ties after excluding signed auction contributions.
+Original printed results and signed bid deltas remain in audit/export fields. Round/final heatmaps show VP earned from the tile or final tile pair in
 **both** modes; conditional final score is separately labelled. Technology
 frequency denominators are observed available player-game opportunities.
 
-Raw VP totals reconcile against final scores including the initial 10 points.
+Raw VP totals reconcile against printed final scores including the initial 10 points.
+Analytical VP sources omit auction contributions and reconcile to pre-bid totals.
 Only verified complete ledgers imply zeros for missing scoring events; historical
 CSV blanks remain unknown. Base raw source categories are phase-aware, LF source
 names retain expansion contributions, and original raw totals remain available.
 Tile-VP denominators exclude unavailable measurements. See
-[SCORING_V2.md](docs/SCORING_V2.md) for these definitions and evidence.
+[PREBID_SCORING.md](docs/PREBID_SCORING.md) for current definitions and migration requirements.
 These are descriptive associations, not causal strategy recommendations or
 skill-adjusted predictions; repeated players contribute repeated observations.
 

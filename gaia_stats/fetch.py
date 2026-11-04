@@ -5,6 +5,7 @@ import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from .eligibility import excluded_export
 from .analysis import normalize
 from .__main__ import atomic_json
 from .identifiers import valid_slug,url_segment
@@ -26,6 +27,10 @@ def fetch_games(slugs, directory):
                 game = json.load(response)
             if not isinstance(game,dict) or game.get('slug')!=slug:
                 raise ValueError('Export slug does not match request')
+            if excluded_export(game):
+                atomic_json(Path(directory) / (slug + ".json"), game)
+                print(f"Retained raw {slug}: excluded from statistics by game eligibility policy")
+                continue
             rows = normalize(game)
             if any(not r["score_verified"] for r in rows):
                 raise ValueError("VP ledger mismatch")

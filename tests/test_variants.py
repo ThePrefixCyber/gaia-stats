@@ -80,7 +80,7 @@ class VariantTests(unittest.TestCase):
 
     def test_variant_only_excludes_non_two_player_lf_and_preserves_base(self):
         four = normalize(json.loads((FIXTURES / 'Jubilant-rover-3041.json').read_text()))
-        base = normalize(json.loads((FIXTURES / 'Modern-riddle-1723.json').read_text()))
+        base = normalize(json.loads((FIXTURES / 'cohort/Shiny-cypress-1384.json').read_text()))
         self.assertEqual(len(select(self.rows + four, {'ruleset': 'lost-fleet', 'lf_2p_4qic_mode': 'variant-only'})), 2)
         for mode in ('standard-only', 'include-both', 'variant-only'):
             self.assertEqual(select(base, {'ruleset': 'base', 'lf_2p_4qic_mode': mode}), base)

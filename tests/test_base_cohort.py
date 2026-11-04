@@ -38,15 +38,15 @@ class BaseCohortTests(unittest.TestCase):
         return response[0],body
 
     def test_import_counts_variants_and_structures(self):
-        self.assertEqual(self.imports[2]['accepted_games'],3)
-        self.assertEqual(self.imports[2]['rejected_games'],1)
-        self.assertEqual(catalog(self.db)['faction_variant'],['more-balanced','standard','unknown'])
+        self.assertEqual(self.imports[2]['accepted_games'],2)
+        self.assertEqual(self.imports[2]['rejected_games'],2)
+        self.assertEqual(catalog(self.db)['faction_variant'],['standard','unknown'])
         data=dataset(self.db,{})
-        self.assertEqual(len(data['rows']),6)
+        self.assertEqual(len(data['rows']),4)
         self.assertEqual(data['rows'][0]['round_one_structures']['PI'],1)
 
     def test_base_all_charts_comparison_and_csv_share_filters(self):
-        filters={'ruleset':'base','min_elo':'200','faction_variant':'more-balanced','player_count':'2'}
+        filters={'ruleset':'base','min_elo':'200','faction_variant':'standard','player_count':'2'}
         for plot in ('advanced-tech-frequency','advanced-tech-score','basic-tech-frequency','basic-tech-score','round-one-structures','round-scoring','final-scoring','point-sources'):
             filters['plot']=plot
             status,raw=self.request('/cohort/api/stats',filters);self.assertEqual(status,'200 OK');r=json.loads(raw)
@@ -58,7 +58,7 @@ class BaseCohortTests(unittest.TestCase):
             self.assertIn(plot,r['plots'])
 
     def test_no_filter_default_and_high_elo_empty(self):
-        status,body=self.request('/cohort/api/stats',{'ruleset':'base'});self.assertEqual(status,'200 OK');self.assertEqual(json.loads(body)['samples'],6)
+        status,body=self.request('/cohort/api/stats',{'ruleset':'base'});self.assertEqual(status,'200 OK');self.assertEqual(json.loads(body)['samples'],4)
         status,body=self.request('/cohort/api/stats',{'ruleset':'base','min_elo':'9999'})
         r=json.loads(body);self.assertEqual(r['samples'],0);self.assertEqual(r['comparisons'],[])
         self.assertEqual(next(iter(r['plots'].values()))['cells'],[])
@@ -69,7 +69,7 @@ class BaseCohortTests(unittest.TestCase):
             r=json.loads(body);self.assertEqual(r['samples'],expected)
             self.assertTrue(all(not x.startswith('g0:') for x in r['record_ids']))
         _,body=self.request('/cohort/api/stats',{'ruleset':'base'})
-        self.assertEqual(json.loads(body)['samples'],6)
+        self.assertEqual(json.loads(body)['samples'],4)
 
     def test_cache_bound_and_injection_rejection(self):
         for cutoff in range(20):self.request('/cohort/api/stats',{'ruleset':'base','min_elo':str(cutoff)})

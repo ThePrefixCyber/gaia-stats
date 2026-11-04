@@ -72,11 +72,11 @@ window.GaiaTiles = (() => {
         }else if(category){
           const key=(trace[axis+'axis']||axis).replace(axis,axis+'axis');relayout[key+'.tickmode']='array';relayout[key+'.tickvals']=trace[axis];relayout[key+'.ticktext']=(trace[axis]||[]).map(translate);
           update.hovertext=[(trace[axis]||[]).map(translate)];update.hovertemplate=(trace.hovertemplate||'%{'+axis+'}').replaceAll('%{'+axis+'}','%{hovertext}');
-          if(trace.name)update.name=/^(?:net-score )?rank[ _]/i.test(trace.name)?trace.name.replace('_',' '):position(trace.name.replace(/^tech_/,'').replace(/^adv-/,'').replace(/^tech_adv-/,''));
+          if(trace.name)update.name=/^(?:pre-bid-score )?rank[ _]/i.test(trace.name)?trace.name.replace('_',' '):position(trace.name.replace(/^tech_/,'').replace(/^adv-/,'').replace(/^tech_adv-/,''));
         }else if(kind==='point-sources'){// Include every trace on this axis, not just the last rank's sources.
           const axis=trace.xaxis||'x',values=[...new Set(traces.filter(t=>(t.xaxis||'x')===axis).flatMap(t=>t.x||[]))];
           relayout[axis.replace('x','xaxis')]={tickmode:'array',tickvals:values,ticktext:values.map(source)};update.hovertext=[(trace.x||[]).map(source)];update.hovertemplate='%{hovertext}<br>%{y}<extra></extra>'; // Finishing-order series are human-readable methodology, not VP-source IDs.
-          if(trace.name&&!/^(?:rank[ _][1-4]\b|bid-restored order [1-4] \(ties broken by original player order\)$)/i.test(trace.name))update.name=source(trace.name);}
+          if(trace.name&&!/^(?:(?:pre-bid-score )?rank[ _][1-4]\b|bid-restored order [1-4] \(ties broken by original player order\)$)/i.test(trace.name))update.name=source(trace.name);}
         if(Object.keys(update).length)Plotly.restyle(graph,update,index);
       });
       Plotly.relayout(graph,relayout);

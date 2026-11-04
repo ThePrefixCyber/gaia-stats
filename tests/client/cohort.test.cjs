@@ -11,9 +11,16 @@ from pathlib import Path
 from gaia_stats.analysis import normalize
 from gaia_stats.cohort import enrich, report, response
 rows=[]
-for name in ('Modern-riddle-1723.json','Jubilant-rover-3041.json'):
+for name in ('cohort/Shiny-cypress-1384.json','Jubilant-rover-3041.json'):
     game=json.loads((Path('tests/fixtures')/name).read_text())
-    rows.extend(enrich(game,normalize(game)))
+    enriched=enrich(game,normalize(game))
+    if name.startswith('cohort/'):
+        # This compact standard fixture omits holdings; use synthetic UI-only
+        # holdings/openings to exercise populated charts without including MB games.
+        for row in enriched:
+            row['owned_technologies']=[{'slot':k,'tile':v} for k,v in row['technologies'].items()]
+            row['round_one_structures']={'m':2,'ts':0,'lab':0,'PI':1,'ac1':0,'ac2':0}
+    rows.extend(enriched)
 dataset={'rows':rows,'scope':'Client test fixtures'}
 print(json.dumps({mode:{'catalog':json.loads(response(dataset,'/cohort/api/catalog',{'ruleset':mode})[0]),
     'stats':{cutoff:report(dataset,dict(ruleset=mode,**({'min_elo':cutoff} if cutoff else {}))) for cutoff in ('','200','99999')}}
@@ -216,7 +223,7 @@ test('point shares keep rank groups and retained absolute mode switches without 
     await h.select('plot','point-sources');
     const requests=h.requests.length;
     assert.ok(h.draws.at(-1).every(t=>t.name.includes('rank')));
-    assert.equal(h.get('chart').layout.yaxis.title,'Signed share of final net score (%)');
+    assert.equal(h.get('chart').layout.yaxis.title,'Signed share of pre-bid score (%)');
     assert.match(h.get('metrics').textContent,/Median score share/);
     await h.select('scoring-view','absolute');
     assert.equal(h.get('chart').layout.yaxis.title,'VP contribution (signed)');

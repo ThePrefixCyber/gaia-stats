@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from gaia_stats.eligibility import POLICY_VERSION
+from gaia_stats.score_basis import SCORE_BASIS_VERSION
 from gaia_stats.legacy_cache import build_cache, cache_response
 from gaia_stats.wsgi import Application
 
@@ -18,7 +20,7 @@ class LegacyCacheTests(unittest.TestCase):
         (self.build / 'plots').mkdir(parents=True)
         (self.build / 'data').mkdir()
         (self.cache / 'current.json').write_text('{"build":"build-test"}')
-        self.catalog = {'schema_version': 1, 'ruleset': 'base', 'datasets': {'4': {
+        self.catalog = {'schema_version': 1, 'eligibility_policy': POLICY_VERSION, 'score_basis_version': SCORE_BASIS_VERSION, 'ruleset': 'base', 'datasets': {'4': {
             'games': 1, 'available': {'terrans': ['basic-tech-frequency']}}}}
         (self.build / 'manifest.json').write_text(json.dumps(self.catalog))
         (self.build / 'plotly.min.js').write_text('window.Plotly={};')
@@ -76,6 +78,32 @@ class LegacyCacheTests(unittest.TestCase):
         self.assertNotIn(b'src="/classic/assets/', body)
         self.assertIn('attachment;', response['headers']['Content-Disposition'])
 
+    def test_unstamped_caches_never_serve_legacy_aggregates_or_csv(self):
+        self.catalog.pop('eligibility_policy')
+        (self.build / 'manifest.json').write_text(json.dumps(self.catalog))
+        before = {p: p.read_bytes() for p in self.build.rglob('*') if p.is_file()}
+        for path, query in (
+            ('/classic/api/catalog', ''), ('/classic/api/comparison', ''),
+            ('/classic/plot', 'players=4&faction=terrans&plot=basic-tech-frequency'),
+            ('/classic/data/4.csv', ''), ('/data/four_players_data.csv', ''),
+            ('/4p/base_tech_analysis/taken_freq/terrans.html', '')):
+            response, body = self.request(path, query)
+            self.assertEqual(response['status'], '400 Bad Request', path)
+            self.assertIn(b'unavailable until rebuilt', body)
+        response, body = self.request('/classic/assets/plotly.min.js')
+        self.assertEqual(response['status'], '200 OK')
+        self.assertEqual(body, b'window.Plotly={};')
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
+
+    def test_current_policy_cache_without_prebid_calculation_stamp_fails_closed(self):
+        self.catalog.pop('score_basis_version')
+        (self.build/'manifest.json').write_text(json.dumps(self.catalog))
+        for route in ('/classic/api/catalog', '/classic/data/4.csv', '/4p/base_tech_analysis/taken_freq/terrans.html'):
+            response, body = self.request(route)
+            self.assertEqual(response['status'], '400 Bad Request')
+            self.assertIn(b'unavailable until rebuilt', body)
+        self.assertEqual(self.request('/classic/assets/plotly.min.js')[0]['status'], '200 OK')
+
     def test_invalid_selection_and_traversal_are_rejected(self):
         for query in ('players=4&faction=../../secret&plot=basic-tech-frequency',
                       'players=5&faction=terrans&plot=basic-tech-frequency',
@@ -91,8 +119,8 @@ class LegacyCacheTests(unittest.TestCase):
     def test_existing_health_rulesets_and_read_only_behavior_remain(self):
         before = self.app.path.read_bytes()
         response, body = self.request('/healthz')
-        self.assertEqual(json.loads(body)['player_records'], 14)
-        for ruleset, games in (('base', 1), ('lost-fleet', 3)):
+        self.assertEqual(json.loads(body)['player_records'], 10)
+        for ruleset, games in (('base', 0), ('lost-fleet', 3)):
             response, body = self.request('/api/analysis', 'ruleset=' + ruleset)
             self.assertEqual(json.loads(body)['games'], games)
         response, _ = self.request('/classic/api/catalog', method='POST')
@@ -115,10 +143,15 @@ class LegacyCacheTests(unittest.TestCase):
         with patch.dict(PLOTS, {'basic-tech-frequency': PLOTS['basic-tech-frequency']}, clear=True), \
                 patch('gaia_stats.legacy_cache.FACTIONS', ('terrans',)):
             catalog = build_cache(self.cache, {4: source})
-        self.assertEqual(catalog['datasets']['4']['games'], 5687)
+        self.assertEqual(catalog['datasets']['4']['games'], 3095)
         self.assertEqual(catalog['datasets']['4']['available'], {'terrans': ['basic-tech-frequency']})
         pointer = json.loads((self.cache / 'current.json').read_text())
         self.assertNotEqual(pointer['build'], 'build-test')
         snapshot = self.cache / pointer['build']
         self.assertTrue((snapshot / 'plots/4-terrans-basic-tech-frequency.html').exists())
-        self.assertEqual((snapshot / 'data/4.csv').read_bytes(), source.read_bytes())
+        import pandas as pd
+        published = pd.read_csv(snapshot / 'data/4.csv')
+        self.assertEqual(len(published), 3095)
+        self.assertFalse(published.balance_variant.eq('more-balanced').any())
+        self.assertEqual(len(pd.read_csv(source)), 5687)
+        self.assertEqual(catalog['datasets']['4']['excluded_games'], 2592)

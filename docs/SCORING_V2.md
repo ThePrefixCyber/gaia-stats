@@ -1,3 +1,5 @@
+> Historical v2 documentation. Live calculations now use [pre-bid scoring](PREBID_SCORING.md), normalization version 3.
+
 # Phase-aware scoring correction
 
 Normalization version 2 corrects raw base source grouping and makes the base and

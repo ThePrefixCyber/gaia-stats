@@ -33,10 +33,10 @@ window.GaiaBasicTech = (() => {
     return {type:'scatter',mode:'markers',name:name(slot),x:group.map(c=>c?.mean_score??null),y:tiles,
      marker:{color:colors[slot],size:slot==='taken'||slot==='not_taken'?11:9,symbol:group.map(c=>slot==='taken'?'triangle-up':slot==='not_taken'?'triangle-down':c&&c.samples<10?'circle-open':'circle')},
      customdata:group.map((c,i)=>[GaiaTiles.label('basic',tiles[i]),c?.samples||0,c?.games||0]),
-     hovertemplate:'%{customdata[0]} · '+name(slot)+'<br>Mean net VP=%{x:.2f}<br>Player-games=%{customdata[1]}; games=%{customdata[2]}<extra></extra>'};
+     hovertemplate:'%{customdata[0]} · '+name(slot)+'<br>Mean pre-bid VP=%{x:.2f}<br>Player-games=%{customdata[1]}; games=%{customdata[2]}<extra></extra>'};
    });
    if(width<600){layout.margin.b=225;layout.legend={orientation:'h',xref:'container',yref:'container',x:0,y:0,yanchor:'bottom',entrywidth:120,entrywidthmode:'pixels',font:{size:11}};}
-   layout.yaxis={tickmode:'array',tickvals:tiles,ticktext:tiles.map(t=>GaiaTiles.label('basic',t)),autorange:'reversed',automargin:true};layout.xaxis={title:{text:'Mean final net VP',standoff:width<600?0:15,font:{size:width<600?12:14}},automargin:true};
+   layout.yaxis={tickmode:'array',tickvals:tiles,ticktext:tiles.map(t=>GaiaTiles.label('basic',t)),autorange:'reversed',automargin:true};layout.xaxis={title:{text:'Mean pre-bid VP',standoff:width<600?0:15,font:{size:width<600?12:14}},automargin:true};
    if(result.mean_score!=null){layout.shapes.push({type:'line',xref:'x',yref:'paper',x0:result.mean_score,x1:result.mean_score,y0:0,y1:1,line:{dash:'dot',width:2,color:'#475569'}});layout.annotations.push({xref:'x',yref:'paper',x:result.mean_score,y:1.02,text:'Cohort mean '+result.mean_score.toFixed(1),showarrow:false});}
   }
   return {traces,layout};

@@ -96,7 +96,7 @@ def statistics(rows, kind):
     if kind=='basic-tech-frequency':
         note='Acquisition frequency by setup bucket; denominator: eligible player-games with this tile at this location and known ownership. Free positions combine here. Exhausted ship piles are recovered from owned tiles; remaining copies are not denominators.'
     elif kind=='basic-tech-score':
-        note='Mean final net VP among players who acquired the tile from its original setup location—not the research track advanced. Taken / Not taken pool all setup locations, including free positions, with known ownership. One player-game per tile; observation-weighted, unlike Tim’s position-weighted means. Dotted line: selected-cohort mean. Associations, not causal impacts.'
+        note='Mean pre-bid VP among players who acquired the tile from its original setup location—not the research track advanced. Taken / Not taken pool all setup locations, including free positions, with known ownership. One player-game per tile; observation-weighted, unlike Tim’s position-weighted means. Dotted line: selected-cohort mean. Associations, not causal impacts.'
     else:
-        note='Mean final net VP of every eligible player-game with the tile at this setup location, acquired or not. Free positions combine here. Dotted line: selected-cohort mean. Associations, not causal impacts.'
-    return {'kind':kind,'cells':cells,'unavailable_records':unknown,'value_label':'Acquisition frequency' if kind.endswith('frequency') else 'Mean final net VP','note':note}
+        note='Mean pre-bid VP of every eligible player-game with the tile at this setup location, acquired or not. Free positions combine here. Dotted line: selected-cohort mean. Associations, not causal impacts.'
+    return {'kind':kind,'cells':cells,'unavailable_records':unknown,'value_label':'Acquisition frequency' if kind.endswith('frequency') else 'Mean pre-bid VP','note':note}
