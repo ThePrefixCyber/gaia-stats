@@ -72,8 +72,16 @@ class StaticStorageTests(unittest.TestCase):
         with sqlite3.connect(self.seed) as db:row=json.loads(db.execute('SELECT payload FROM observations LIMIT 1').fetchone()[0])
         data['rows'].append(row);self.legacy.write_text(json.dumps(data))
         self.assertEqual(self.publish()['release'],first['release'])
-        # Accepted LF arriving for a record already in the legacy data changes
-        # provenance but identical processed observations need no extra objects.
+        # Accepted LF arriving for a record already in legacy changes only its
+        # source bookkeeping. Persist a checkpoint, not a duplicate generation.
+        payload=json.loads((shared.FIXTURES/'Jubilant-rover-3041.json').read_text())
+        collect(self.archive,'lost-fleet',client=FakeClient({payload['slug']:payload}),max_pages=1,max_downloads=1)
+        with patch('gaia_stats.releases.normalize',wraps=normalize) as normalizer:
+            self.assertEqual(self.publish()['release'],first['release'])
+        normalizer.assert_called_once()
+        self.assertTrue((self.store/'source-checkpoint.json').exists())
+        with patch('gaia_stats.releases.normalize',side_effect=AssertionError('checkpoint was ignored')):
+            self.assertEqual(self.publish()['release'],first['release'])
         self.assertEqual(len(list((self.store/'releases').iterdir())),1)
 
     def test_static_migration_requires_explicit_optin_and_keeps_old_bytes(self):
