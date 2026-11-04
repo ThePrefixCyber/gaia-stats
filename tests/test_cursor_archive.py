@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from gaia_stats.archive import collect,listing_cursor
 from gaia_stats.refresh import run
+from gaia_stats.releases import current
 from test_archive import FakeClient,game
 import test_releases
 
@@ -201,19 +202,46 @@ class CursorRefreshTests(unittest.TestCase):
         self.assertIsNone(state['passes']['lost-fleet-head']['cursor_checkpoint'])
         self.assertEqual(state['state'],'error')
 
-    def test_refresh_uses_cursor_by_default_and_publication_preserves_modes(self):
+    def test_refresh_collects_only_lost_fleet_and_preserves_base_archive_and_rows(self):
+        base=CursorClient(['Base-kept'],lf=False)
+        collect(self.archive,'base',client=base,pagination='cursor',max_pages=1,max_downloads=1)
+        queued=CursorClient(['Base-pending'],lf=False)
+        collect(self.archive,'base',client=queued,pagination='cursor',max_pages=1,max_downloads=0)
         self.publish()
-        clients={'base':CursorClient(['Base'],lf=False),'lost-fleet':CursorClient(['LF'])}
-        class Both:
-            def get(inner,url):
-                if '/status/ended?' in url:mode='lost-fleet' if 'expansion=' in url else 'base'
-                else:mode='lost-fleet' if url.endswith('/LF') else 'base'
-                return clients[mode].get(url)
-        result=run(self.store,self.seed,self.archive,self.legacy,client=Both())
+        seed=self.seed.read_bytes()
+        base_files={p:p.read_bytes() for p in (self.archive/'base').rglob('*') if p.is_file()}
+        with sqlite3.connect(current(self.store)/'base.sqlite') as db:
+            base_rows=db.execute('SELECT * FROM observations ORDER BY game_id,faction').fetchall()
+        def base_checkpoint():
+            with sqlite3.connect(self.archive/'archive.sqlite3') as db:
+                return {table:db.execute('SELECT * FROM '+table+' WHERE mode="base" ORDER BY rowid').fetchall()
+                        for table in ('exports','scans','cursor_scans','cursor_seen','events')}
+        checkpoint=base_checkpoint()
+        client=CursorClient(['LF'])
+        get=client.get
+        def only_lost_fleet(url):
+            if '/status/ended?' in url:
+                self.assertIn('expansion=lost-fleet',url)
+            return get(url)
+        client.get=only_lost_fleet
+        result=run(self.store,self.seed,self.archive,self.legacy,client=client)
         self.assertEqual(result['state'],'ok')
-        for mode in clients:
-            self.assertEqual(result['passes'][mode]['pagination'],'cursor')
-            self.assertEqual(result['passes'][mode]['cursor_checkpoint'][1],1)
-            self.assertEqual(len(clients[mode].exports),1)
-        with sqlite3.connect(self.archive/'archive.sqlite3') as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM scans').fetchone()[0],0)
+        self.assertEqual(set(result['passes']),{'lost-fleet-head','lost-fleet'})
+        for name in result['passes']:
+            self.assertEqual(result['passes'][name]['pagination'],'cursor')
+        self.assertEqual(result['passes']['lost-fleet']['cursor_checkpoint'][1],1)
+        self.assertEqual(client.exports,['LF'])
+        self.assertEqual(base_checkpoint(),checkpoint)
+        self.assertEqual(self.seed.read_bytes(),seed)
+        self.assertEqual({p:p.read_bytes() for p in (self.archive/'base').rglob('*') if p.is_file()},base_files)
+        with sqlite3.connect(current(self.store)/'base.sqlite') as db:
+            self.assertEqual(db.execute('SELECT * FROM observations ORDER BY game_id,faction').fetchall(),base_rows)
+        lf=json.loads((current(self.store)/'lost-fleet.json').read_text())['rows']
+        self.assertEqual(sum(row['game_id']=='LF' for row in lf),4)
+        # Later refreshes keep collecting new LF games without redownloading old ones.
+        client.games['LF-next']=game('LF-next')
+        client.entries.insert(0,{'_id':'LF-next','endedAt':'2026-01-29T00:00:00.000Z'})
+        again=run(self.store,self.seed,self.archive,self.legacy,client=client)
+        self.assertEqual(again['state'],'ok')
+        self.assertEqual(client.exports,['LF','LF-next'])
+        self.assertEqual(base_checkpoint(),checkpoint)

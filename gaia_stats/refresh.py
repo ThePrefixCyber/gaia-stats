@@ -33,7 +33,9 @@ def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downlo
         try:
             if not dry_run:
                 client=client or ArchiveClient(interval=1.1,attempts=3)
-                for mode in ('lost-fleet','base'):
+                # Base collection is stopped; retain its archive and published rows.
+                # The separate static-CSV transition does not happen in this refresh.
+                for mode in ('lost-fleet',):
                     # Always inspect the newest entries, without moving the historical cursor.
                     head=collect(archive,mode,client=client,max_pages=2,max_downloads=min(20,max_downloads),head_only=True,pagination=pagination)
                     status['passes'][mode+'-head']=head

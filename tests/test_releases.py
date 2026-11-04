@@ -124,9 +124,20 @@ class ReleaseTests(unittest.TestCase):
     def test_successful_refresh_and_preflight_routes(self):
         self.publish()
         result={'listing_error':None,'retry':0,'accepted':0,'rejected':0}
-        with patch('gaia_stats.refresh.collect',return_value=result):
+        with patch('gaia_stats.refresh.collect',return_value=result) as collector:
             state=run(self.store,self.seed,self.archive,self.legacy)
         self.assertEqual(state['state'],'ok');self.assertTrue(state['last_success'])
+        self.assertEqual([call.args[1] for call in collector.call_args_list],['lost-fleet','lost-fleet'])
+        self.assertTrue(collector.call_args_list[0].kwargs['head_only'])
+        self.assertEqual(collector.call_args_list[0].kwargs['max_pages'],2)
+        self.assertEqual(collector.call_args_list[0].kwargs['max_downloads'],20)
+        self.assertEqual(collector.call_args_list[1].kwargs['max_downloads'],100)
+        pointer=(self.store/'current.json').read_bytes()
+        with patch('gaia_stats.refresh.collect') as collector:
+            dry_run=run(self.store,self.seed,self.archive,self.legacy,dry_run=True)
+        collector.assert_not_called()
+        self.assertEqual(dry_run['state'],'dry-run')
+        self.assertEqual((self.store/'current.json').read_bytes(),pointer)
         spec=importlib.util.spec_from_file_location('preflight',Path(__file__).parents[1]/'deploy/check-rebuilt.py')
         mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
         cache=self.root/'cache';cache.mkdir();(cache/'current.json').write_text('{"build":"build-test"}')

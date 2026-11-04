@@ -9,8 +9,9 @@ it does not claim pixel-perfect reproduction of Tim's site.
 The public deployment is [http://45.76.250.100](http://45.76.250.100).
 As of **2026-11-02 09:22 UTC**, the rebuilt application, GitHub-polling code
 updates and scheduled cursor-based archive refresh were verified running.
-Historical base-game backfill is still incomplete. Use `/healthz` for current
-release counts, discovery checkpoints and refresh status rather than treating
+Historical base-game backfill is incomplete; this code stops its collection.
+Use `/healthz` for current release counts, discovery checkpoints and refresh status
+rather than treating
 this README as a live inventory. HTTPS and off-server backups are not established.
 
 ## Current statistics and filters
@@ -82,8 +83,12 @@ skill-adjusted predictions; repeated players contribute repeated observations.
 
 Production combines an eligible historical base CSV seed with accepted public
 BGS raw exports. Matching raw game IDs replace seed observations rather than
-being appended twice. LF is maintained separately. The raw importer rejects
-unknown/conflicting rulesets, solo/Automa, cancelled, incomplete or dropped games,
+being appended twice. LF is maintained separately. Scheduled refresh collects only
+Lost Fleet,
+including its newest games and historical queue. Existing base archives, queued
+exports and published rows are retained without further base collection. This
+change does not yet switch published base statistics to static CSV only.
+The raw importer rejects unknown/conflicting rulesets, solo/Automa, cancelled, incomplete or dropped games,
 and unreconciled VP ledgers. Historical CSV eligibility and provenance are distinct
 from raw-ledger verification: CSV scores are source results, not freshly verified
 raw logs.
@@ -92,8 +97,8 @@ The collector uses the deployed ended-game cursor contract, `endedAt` plus `_id`
 with one-row lookahead. Cursor migration starts at the head and deduplicates the
 existing queue; it preserves old offset checkpoints and raw provenance. Queue
 entries and cursor advancement commit together. Each refresh checks two newest
-pages first, then resumes historical discovery, with paced requests, bounded
-retries, persistent cooldowns and a resumable download queue. Head downloads
+Lost Fleet pages first, then resumes its historical discovery, with paced requests,
+bounded retries, persistent cooldowns and a resumable download queue. Head downloads
 receive priority over the historical backlog. See
 [CURSOR_DISCOVERY.md](docs/CURSOR_DISCOVERY.md) for protocol evidence and limits.
 
@@ -131,7 +136,7 @@ complete-game batches. Two separate systemd timers have different jobs:
 
 Refresh runs as the app account, with a lock, 720-second process deadline,
 13-minute service timeout, 512 MiB memory ceiling, and at most 100 export attempts
-per mode per run. Code updates run tests as the app account, restart, and verify
+per run for Lost Fleet. Code updates run tests as the app account, restart, and verify
 the expected code SHA, rebuilt root, Plotly asset and both modes through Gunicorn
 and Nginx. Unchanged-code polls also verify health. Degraded archive freshness
 alone does not cause healthy app code to roll back.
