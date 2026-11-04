@@ -636,3 +636,26 @@ test('opening explorer has no faction-balance selectors or hidden variant query 
   }
  }finally{w.close();}
 });
+
+
+test('technology acquisition tables label score values as VP, not acquisition frequency',async()=>{
+ const h=await harness();try{
+  for(const kind of ['basic-tech-frequency','advanced-tech-frequency']){
+   await h.select('plot',kind);
+   const before=JSON.stringify(h.w.testClient.getResult().plots[kind]);
+   const table=h.get('metrics').querySelector('table');
+   const headings=[...table.querySelectorAll('th button > span:first-child')].map(node=>node.textContent);
+   assert.ok(headings.includes('Acquisition rate'));
+   assert.ok(headings.includes('Mean pre-bid VP'));
+   assert.ok(!headings.includes('Acquisition frequency'));
+   const scoreIndex=headings.indexOf('Mean pre-bid VP');
+   const plot=h.w.testClient.getResult().plots[kind];
+   const cells=kind==='basic-tech-frequency'?plot.cells:(plot.tile_cells??plot.cells);
+   assert.ok(cells.some(row=>Number.isFinite(row.mean_score)));
+   assert.deepEqual([...table.querySelectorAll('tbody tr')].map(row=>row.children[scoreIndex].querySelector('.cell-value')?.textContent??'Unavailable'),
+    cells.map(row=>row.mean_score==null?'Unavailable':new Intl.NumberFormat('en',{maximumFractionDigits:2}).format(row.mean_score)));
+   assert.doesNotMatch(table.textContent,/tech[0-9]+|adv-tech-[0-9]+/);
+   assert.equal(JSON.stringify(h.w.testClient.getResult().plots[kind]),before);
+  }
+ }finally{h.close();}
+});
