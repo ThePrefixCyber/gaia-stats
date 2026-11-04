@@ -563,3 +563,17 @@ test('spinner lives inside fullscreen chart workspace and respects reduced motio
  const dom=new JSDOM(html);
  try{assert.ok(dom.window.document.querySelector('#chart-panel #chart-stage #chart-loading'));assert.ok(dom.window.document.querySelector('#chart-panel #chart-loading-status'));}finally{dom.window.close();}
 });
+
+
+test('mode error and restored invalid Elo purge retained Plotly state before replacing chart text',async()=>{
+ for(const failure of ['catalog','invalid']){
+  const h=await harness({memories:{'lost-fleet':{min_elo:failure==='invalid'?'0':''}}});
+  try{
+   assert.ok(h.get('chart').data);const purges=h.purges.length;
+   if(failure==='catalog')h.setFailures(true);
+   await h.select('mode','lost-fleet');
+   assert.equal(h.get('chart').data,undefined,failure);assert.ok(h.purges.length>purges,failure);assert.equal(h.get('chart-loading').hidden,true);
+   h.setFailures(false);h.get('filters').elements.min_elo.value='';await h.apply();assert.ok(h.get('chart').data);assert.equal(h.get('chart-loading').hidden,true);
+  }finally{h.close();}
+ }
+});

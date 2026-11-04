@@ -39,7 +39,7 @@ function rejectInvalidElo(){
  // work from input/invalid events too, before a late response can restore it.
  cancelRequest();++generation;el('csv').removeAttribute('href');
  el('status').textContent='Enter a positive whole-number Elo, or leave this field empty.'+(result?' Previous results remain visible.':'');
- if(!result)el('chart').textContent='Correct the Elo field, then apply filters to load the chart.';
+ if(!result){if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent='Correct the Elo field, then apply filters to load the chart.';}
  setChartLoading(false,el('status').textContent);
 }
 function onEloInput(){if(!validateElo())rejectInvalidElo();}
@@ -250,7 +250,7 @@ async function loadMode(){
   el('plot').value=names[saved.plot]?saved.plot:'advanced-tech-frequency';
   el('frequency-view').value=saved.frequency_view==='position'?'position':'tile';
   syncVariantControl();syncLayoutControl();loadedMode=mode;form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;await update();
- }catch(error){if(current===generation){el('status').textContent=error.name==='AbortError'?'Loading cancelled. Apply filters to retry.':error.message;el('chart').textContent='Unavailable';setChartLoading(false,el('status').textContent);form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;}}
+ }catch(error){if(current===generation){el('status').textContent=error.name==='AbortError'?'Loading cancelled. Apply filters to retry.':error.message;if(window.Plotly)Plotly.purge(el('chart'));el('chart').textContent='Unavailable';setChartLoading(false,el('status').textContent);form.querySelector('fieldset').disabled=false;form.elements.faction.disabled=false;el('plot').disabled=false;}}
 }
 const focusButton=el('chart-focus');
 function focusChart(active){for(const child of document.querySelector('main').children){if(child!==el('chart-panel'))child.inert=active;}document.body.classList.toggle('chart-focus',active);focusButton.textContent=active?'Exit chart view':'Expand chart';focusButton.setAttribute('aria-pressed',String(active));draw();focusButton.focus();}
