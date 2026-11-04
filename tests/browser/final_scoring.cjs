@@ -23,6 +23,11 @@ const setup="import sys,json;sys.path.insert(0,'tests');from test_final_combinat
  assert.deepEqual(traces[0].z,[[9],[-18]]);assert.deepEqual(traces[1].z,[[25],[-50]]);
  assert.match(traces[1].text[0][0],/faction baseline across pairs=50.00% \(win n=3\)/);
  assert.match(traces[0].text[0][0],/VP n=8/);
+ const headings=await page.locator('#metrics th').allTextContents();
+ const values=await page.locator('#metrics tbody tr').first().locator('td').allTextContents();
+ assert.equal(values[headings.indexOf('Shared wins (%)')],'75.00');
+ assert.equal(values[headings.indexOf('Faction win baseline (%)')],'50.00');
+ assert.equal(values[headings.indexOf('Win difference (percentage points)')],'25.00');
  await page.locator('#chart').screenshot({path:process.env.SCREENSHOT||'/tmp/gaia-final-scoring.png'});
  assert.deepEqual(errors,[]);console.log('Actual Plotly: faction-required state, two delta heatmaps, exact baselines and denominators passed');
  } finally {await browser.close();}

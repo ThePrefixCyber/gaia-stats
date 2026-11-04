@@ -43,7 +43,8 @@ is then zero and its baseline sample size is shown.
 
 Tooltips and exact-observation tables retain absolute means, both baselines,
 both differences, game counts, player-observation counts, valid tile-VP counts,
-and baseline counts. Unknown VP stays unknown; it does not reduce the win
+and baseline counts. Exact-table win rates are percentages and win differences
+are percentage points; API fractions remain unchanged. Unknown VP stays unknown; it does not reduce the win
 sample or become zero. Missing pairs remain blank. Elo is an individual-player
 filter and can leave partial tables. Small-sample differences describe the
 observed cohort; they are neither confidence estimates nor causal effects.
