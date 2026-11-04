@@ -274,6 +274,22 @@ class DataContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'exactly match'):
             self.check()
 
+    def test_sqlite_columns_cannot_disagree_with_payload_identity(self):
+        for target in (self.seed,self.release/'base.sqlite'):
+            original=target.read_bytes()
+            for column in ('game_id','faction'):
+                with self.subTest(target=target.name,column=column):
+                    with sqlite3.connect(target) as db:
+                        db.execute(f"UPDATE observations SET {column}='alias' WHERE faction='terrans'")
+                    self.manifest['inputs']['seed']=guard.digest(self.seed)
+                    self.rehash()
+                    with self.assertRaisesRegex(ValueError,'columns and payload identity disagree'):
+                        self.check()
+                target.write_bytes(original)
+            self.manifest['inputs']['seed']=guard.digest(self.seed)
+            self.rehash()
+        self.check()
+
     def test_classic_parity_cannot_omit_entire_unlisted_seed_partition(self):
         extra=[dict(self.rows[0],game_id='three-player',player_count=3,faction=faction,
                     score=150,reported_score=150,bid_delta=0,rank=1,win_share=1/3)
