@@ -24,6 +24,36 @@ def digest(path):
     return checksum.hexdigest()
 
 
+def lost_fleet_rows(path, root):
+    """Read legacy rows or verify every immutable game object without app code."""
+    path, root = Path(path), Path(root).resolve()
+    data = read_json(path)
+    require(isinstance(data, dict), 'Invalid Lost Fleet dataset')
+    if data.get('storage') is None:
+        require(data.get('schema_version', 1) == 1 and isinstance(data.get('rows'), list),
+                'Unsupported Lost Fleet dataset')
+        yield from data['rows']
+        return
+    require(data.get('schema_version') == 1 and data.get('storage') == 'content-addressed-games-v1',
+            'Unsupported Lost Fleet storage')
+    require(isinstance(data.get('games'), dict) and 'rows' not in data, 'Invalid LF object index')
+    require(path.parent.parent.resolve() == root / 'releases', 'LF object index escapes its store')
+    directory = root / 'objects' / 'lost-fleet'
+    require(directory.resolve().is_relative_to(root), 'LF object directory escapes its store')
+    for slug, sha in sorted(data['games'].items()):
+        require(isinstance(slug, str) and bool(slug), 'Invalid LF game identity')
+        require(isinstance(sha, str) and re.fullmatch(r'[a-f0-9]{64}', sha), 'Invalid LF object hash')
+        target = directory / (sha + '.json')
+        require(target.resolve().parent == directory.resolve(), 'LF object escapes its store')
+        raw = target.read_bytes()
+        require(hashlib.sha256(raw).hexdigest() == sha, 'LF object hash mismatch: ' + slug)
+        rows = json.loads(raw)
+        require(isinstance(rows, list) and bool(rows) and
+                all(isinstance(row, dict) and row.get('game_id') == slug for row in rows),
+                'LF object identity mismatch: ' + slug)
+        yield from rows
+
+
 def finite(value):
     return type(value) in (int, float) and math.isfinite(value)
 
@@ -159,8 +189,8 @@ def check(contract_path, root, seed, cache):
         imports = json.loads(metadata(db).get('imports', '{}'))
     require(isinstance(imports, dict) and bool(imports) and all(key in ('2', '3', '4') for key in imports), 'Seed source-player-count provenance is missing')
     base_counts = check_sqlite(release / 'base.sqlite', contract, blocked, 'Base release')
-    lf = read_json(release / 'lost-fleet.json')
-    lf_counts = check_rows(lf['rows'], contract, 'lost-fleet', blocked, 'Lost Fleet release')
+    lf_counts = check_rows(lost_fleet_rows(release / 'lost-fleet.json', root),
+                           contract, 'lost-fleet', blocked, 'Lost Fleet release')
     counts = {'base': base_counts, 'lost-fleet': lf_counts}
     require(counts == manifest.get('datasets'), 'Manifest counts do not match checked observations')
     for mode, count in counts.items():

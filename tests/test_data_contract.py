@@ -82,6 +82,74 @@ class DataContractTests(unittest.TestCase):
             data = guard.read_json(self.release/target); change(data['rows'][0]); self.write(self.release/target,data)
         self.rehash()
 
+    def index_lost_fleet(self, rows=None):
+        if rows is None:
+            rows = guard.read_json(self.release/'lost-fleet.json')['rows']
+        directory = self.root/'objects/lost-fleet'
+        directory.mkdir(parents=True, exist_ok=True)
+        raw = json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()
+        sha = guard.hashlib.sha256(raw).hexdigest()
+        target = directory/(sha+'.json'); target.write_bytes(raw)
+        self.write(self.release/'lost-fleet.json',
+                   {'schema_version':1, 'storage':'content-addressed-games-v1', 'games':{'lf':sha}})
+        self.rehash()
+        return target
+
+    def test_indexed_lost_fleet_passes_read_only_and_standalone_cli(self):
+        self.index_lost_fleet()
+        before = {p:p.read_bytes() for p in self.bundle.rglob('*') if p.is_file()}
+        self.assertEqual(self.check()['datasets'], self.manifest['datasets'])
+        result = subprocess.run([sys.executable, '-I', str(ROOT/'deploy/check-data-contract.py'),
+                                 '--contract', str(self.contract_path), '--bundle', str(self.bundle)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual({p:p.read_bytes() for p in self.bundle.rglob('*') if p.is_file()}, before)
+
+    def test_indexed_lost_fleet_corrupt_and_missing_objects_fail(self):
+        target = self.index_lost_fleet(); original = target.read_bytes()
+        target.write_bytes(original+b' ')
+        with self.assertRaisesRegex(ValueError, 'object hash mismatch'):self.check()
+        target.write_bytes(original)
+        target.rename(target.with_suffix('.retained'))
+        with self.assertRaises(FileNotFoundError):self.check()
+
+    def test_indexed_lost_fleet_rejects_traversal_and_symlink_escape(self):
+        target = self.index_lost_fleet()
+        index = guard.read_json(self.release/'lost-fleet.json')
+        index['games']['lf'] = '../../outside'
+        self.write(self.release/'lost-fleet.json', index); self.rehash()
+        with self.assertRaisesRegex(ValueError, 'Invalid LF object hash'):self.check()
+        index['games']['lf'] = target.stem
+        self.write(self.release/'lost-fleet.json', index); self.rehash()
+        outside = self.bundle/'outside.json'; target.rename(outside); target.symlink_to(outside)
+        with self.assertRaisesRegex(ValueError, 'escapes'):self.check()
+
+    def test_indexed_lost_fleet_rejects_object_directory_escape(self):
+        target = self.index_lost_fleet()
+        outside = self.bundle/'outside-objects'; target.parent.rename(outside)
+        target.parent.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'directory escapes'):self.check()
+
+    def test_indexed_lost_fleet_checks_identity_and_existing_row_contract(self):
+        rows = guard.read_json(self.release/'lost-fleet.json')['rows']
+        wrong = copy.deepcopy(rows); wrong[0]['game_id'] = 'other'
+        self.index_lost_fleet(wrong)
+        with self.assertRaisesRegex(ValueError, 'object identity mismatch'):self.check()
+        wrong = copy.deepcopy(rows); wrong[0]['rank'] = 1
+        self.index_lost_fleet(wrong)
+        with self.assertRaisesRegex(ValueError, 'rank'):self.check()
+        self.index_lost_fleet([None])
+        with self.assertRaisesRegex(ValueError, 'object identity mismatch'):self.check()
+
+    def test_indexed_lost_fleet_rejects_unsupported_or_ambiguous_storage(self):
+        self.index_lost_fleet()
+        path = self.release/'lost-fleet.json'; index = guard.read_json(path)
+        index['storage'] = 'unknown'; self.write(path, index); self.rehash()
+        with self.assertRaisesRegex(ValueError, 'Unsupported Lost Fleet storage'):self.check()
+        index['storage'] = 'content-addressed-games-v1'; index['rows'] = []
+        self.write(path, index); self.rehash()
+        with self.assertRaisesRegex(ValueError, 'Invalid LF object index'):self.check()
+
     def test_ready_contract_is_read_only_and_accepts_older_source_normalization(self):
         before = {p:p.read_bytes() for p in self.bundle.rglob('*') if p.is_file()}
         result = self.check()
