@@ -44,7 +44,7 @@ class CohortTests(unittest.TestCase):
         self.assertIn({'tile':'tech2','slot':'nav'}, row['owned_technologies'])
 
     def test_default_variant_and_mode_isolation(self):
-        base = normalize(load(FIXTURES / 'Modern-riddle-1723.json'))
+        base = normalize(load(FIXTURES / 'cohort/Shiny-cypress-1384.json'))
         data = {'rows': self.rows + base}
         standard = report(data, {'ruleset':'lost-fleet'})
         both = report(data, {'ruleset':'lost-fleet','lf_2p_4qic_mode':'include-both'})

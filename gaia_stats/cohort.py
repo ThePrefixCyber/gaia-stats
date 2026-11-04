@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import mean, quantiles
 
+from .eligibility import ExcludedGame, eligible_rows, require_eligible_export
 from .analysis import normalize, select
 from .__main__ import atomic_json
 from .scoring import complete_ledger, tile_value
@@ -64,6 +65,8 @@ def enrich(game, rows):
 def build(paths, destination):
     rows, accepted, rejected = [], [], []
     seen = {}
+    excluded = set()
+    invalid = False
     for path in sorted(map(Path, paths)):
         raw = path.read_bytes()
         provenance = {'file': path.name, 'sha256': hashlib.sha256(raw).hexdigest()}
@@ -72,6 +75,9 @@ def build(paths, destination):
             identifier=game.get('slug') or game.get('_id')
             canonical=hashlib.sha256(json.dumps(game,sort_keys=True,separators=(',',':')).encode()).hexdigest()
             if not identifier:raise ValueError('Missing game identifier')
+            provenance['game_id'] = identifier
+            require_eligible_export(game)
+            if identifier in excluded:continue
             if identifier in seen:
                 if seen[identifier]!=canonical:raise RuntimeError('Conflicting duplicate export: '+identifier)
                 rejected.append({**provenance,'reason':'Duplicate game identifier; identical export skipped'})
@@ -84,11 +90,18 @@ def build(paths, destination):
                 raise ValueError('This sample build accepts Lost Fleet only')
             rows.extend(candidate)
             accepted.append(provenance)
-        except (KeyError, ValueError, TypeError) as error:
+        except ExcludedGame as error:
+            excluded.add(identifier)
             rejected.append({**provenance, 'reason': str(error)})
+        except (KeyError, ValueError, TypeError) as error:
+            invalid = True
+            rejected.append({**provenance, 'reason': str(error)})
+    rows = [r for r in rows if r['game_id'] not in excluded]
+    accepted = [p for p in accepted if p['game_id'] not in excluded]
     dataset = {'schema_version': 1, 'rows': rows, 'accepted': accepted, 'rejected': rejected,
+               'excluded_game_ids': sorted(excluded),
                'scope': 'Bounded public Lost Fleet sample; not a representative archive'}
-    if not rows:raise ValueError('No accepted complete games; existing dataset preserved')
+    if not rows and (not excluded or invalid):raise ValueError('No accepted complete games; existing dataset preserved')
     atomic_json(destination, dataset)
     return dataset
 
@@ -318,7 +331,7 @@ def response(dataset, path, filters):
     if path == '/cohort/api/catalog':
         version=filters.get('ruleset','lost-fleet')
         if version not in ('base','lost-fleet'):raise ValueError('Choose base or lost-fleet')
-        rows = dataset['rows']
+        rows = eligible_rows(dataset['rows'])
         result = {key: sorted({str(r[key]) for r in rows if r['ruleset'] == version})
                   for key in ('faction', 'layout', 'auction', 'faction_variant')}
         result.update({key: sorted({tile for r in rows if r['ruleset'] == version

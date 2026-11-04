@@ -10,6 +10,8 @@ import sqlite3
 import tempfile
 
 
+from .eligibility import BASE_ELIGIBLE_SQL, EXCLUDED_FACTION_VARIANT, POLICY_VERSION
+
 def number(value):
     try:
         n=float(value)
@@ -18,6 +20,8 @@ def number(value):
 
 
 def convert(game, count):
+    if game.get('balance_variant') == EXCLUDED_FACTION_VARIANT:
+        return []
     if any(game.get(f'pos_{p}_dropped') != 'False' for p in range(1,count+1)):
         return []
     scores=[number(game.get(f'pos_{p}_score')) for p in range(1,count+1)]
@@ -54,6 +58,13 @@ def convert(game, count):
 def build(csvs, destination):
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
     fd,temp=tempfile.mkstemp(prefix='base-cohort-',suffix='.sqlite',dir=destination.parent);os.close(fd)
+    # Inspect every input before insertion: an explicit marker excludes the
+    # entire game even if another source row for that ID says unknown/standard.
+    excluded=set()
+    for path in csvs.values():
+        with Path(path).open(newline='') as handle:
+            excluded.update(game['id'] for game in csv.DictReader(handle)
+                            if game.get('balance_variant') == EXCLUDED_FACTION_VARIANT)
     counts={};catalog={k:set() for k in ('faction','layout','auction','faction_variant','round_scorings','final_scorings','advanced_technologies')}
     try:
         with sqlite3.connect(temp) as db:
@@ -64,7 +75,7 @@ def build(csvs, destination):
                 with Path(path).open(newline='') as handle:
                     for game in csv.DictReader(handle):
                         if number(game.get('num_players'))!=count:raise ValueError('Wrong CSV player count')
-                        rows=convert(game,count)
+                        rows=[] if game['id'] in excluded else convert(game,count)
                         if not rows:rejected+=1;continue
                         for row in rows:
                             db.execute('INSERT INTO observations VALUES (?,?,?,?,?,?,?,?)',tuple(row[k] for k in ('game_id','faction','player_count','elo','layout','auction','faction_variant'))+(json.dumps(row,separators=(',',':')),))
@@ -73,6 +84,8 @@ def build(csvs, destination):
                             catalog['advanced_technologies'].update(t for s,t in row['technologies'].items() if s.startswith('adv-'))
                         accepted+=1;records+=len(rows)
                 counts[count]={'accepted_games':accepted,'rejected_games':rejected,'records':records,'sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest()}
+            db.execute('INSERT INTO metadata VALUES (?,?)', ('eligibility_policy', str(POLICY_VERSION)))
+            db.execute('INSERT INTO metadata VALUES (?,?)', ('excluded_game_ids', json.dumps(sorted(excluded))))
             db.execute('CREATE INDEX selection ON observations(player_count,faction,elo)')
             db.execute('INSERT INTO metadata VALUES (?,?)',('catalog',json.dumps({k:sorted(v) for k,v in catalog.items()})))
             db.execute('INSERT INTO metadata VALUES (?,?)',('imports',json.dumps(counts)))
@@ -87,11 +100,14 @@ def connect(path):
 
 
 def catalog(path):
-    with connect(path) as db:return json.loads(db.execute("SELECT value FROM metadata WHERE key='catalog'").fetchone()[0])
+    with connect(path) as db:
+        result = json.loads(db.execute("SELECT value FROM metadata WHERE key='catalog'").fetchone()[0])
+    result['faction_variant'] = [v for v in result.get('faction_variant', []) if v != EXCLUDED_FACTION_VARIANT]
+    return result
 
 
 def iter_rows(path,filters):
-    clauses=[];params=[]
+    clauses=[BASE_ELIGIBLE_SQL];params=[]
     for key in ('player_count','faction','layout','auction','faction_variant'):
         if filters.get(key):clauses.append(key+' = ?');params.append(filters[key])
     if filters.get('min_elo'):
@@ -105,7 +121,7 @@ def iter_rows(path,filters):
             yield json.loads(record[0])
 
 
-SCOPE = 'Historical base CSV cohort; dropped games excluded; unknown variant values remain unknown'
+SCOPE = 'Historical base CSV cohort; dropped and more-balanced games excluded; unknown variant values remain unknown'
 
 
 def batches(path, filters, size=1024):

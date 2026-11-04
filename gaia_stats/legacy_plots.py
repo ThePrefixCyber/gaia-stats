@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 
+from .eligibility import eligible_frame
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -102,6 +104,15 @@ def make_plot(kind, data, *, players=4, faction, methodology="corrected", min_el
     Corrected empty cohorts show no observations; missing columns fail explicitly.
     Use fig.to_html()/write_html() to export the result from an offline caller.
     """
+    eligible = eligible_frame(data)
+    if _observations is not None:
+        # Prepared observations may predate the policy. Remove the whole game
+        # based on either the dataframe or the prepared provenance.
+        blocked = set(data['id']) - set(eligible['id']) if 'id' in data else set()
+        blocked.update(r['game'] for r in _observations
+                       if r['values'].get('balance_variant') == 'more-balanced')
+        _observations = [r for r in _observations if r['game'] not in blocked]
+    data = eligible
     if kind not in PLOTS:
         raise ValueError('Unknown plot: ' + str(kind))
     if players not in (2, 3, 4):

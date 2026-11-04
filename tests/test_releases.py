@@ -172,7 +172,7 @@ class ReleaseTests(unittest.TestCase):
             with patch('gaia_stats.base_cohort.response',side_effect=slow):
                 old=threading.Thread(target=request,args=('/cohort/api/stats',));old.start();self.assertTrue(entered.wait(2))
                 self.legacy.write_text(self.legacy.read_text()+' ');self.publish()
-                def validate_new(path):validating.set();return real_validate(path)
+                def validate_new(path,**kwargs):validating.set();return real_validate(path,**kwargs)
                 with patch('gaia_stats.releases.validate',side_effect=validate_new):
                     identity.return_value='checkout-changed'
                     new=threading.Thread(target=request,args=('/healthz',));new.start()

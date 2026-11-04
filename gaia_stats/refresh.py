@@ -38,7 +38,7 @@ def run(root,seed_base,archive,legacy=None,*,client=None,max_pages=20,max_downlo
                     head=collect(archive,mode,client=client,max_pages=2,max_downloads=min(20,max_downloads),head_only=True,pagination=pagination)
                     status['passes'][mode+'-head']=head
                     if head['listing_error'] or head['retry']:raise ValueError(mode+' head scan did not complete cleanly')
-                    remaining=max_downloads-head['accepted']-head['rejected']-head['retry']
+                    remaining=max_downloads-head['accepted']-head['rejected']-head['retry']-head.get('excluded',0)
                     result=collect(archive,mode,client=client,max_pages=max_pages,max_downloads=remaining,pagination=pagination)
                     status['passes'][mode]=result
                     if result['listing_error'] and result.get('listing_error_detail',{}).get('http_status')==400 and not result['retry']:

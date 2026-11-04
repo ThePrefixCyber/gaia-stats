@@ -23,6 +23,12 @@ missing historical metadata remains unknown. Missing Elo is included without a
 cutoff and excluded when a numeric minimum is set. Mode selections are remembered
 within the browser session.
 
+Games explicitly marked **more-balanced** are excluded site-wide, in both base
+and Lost Fleet modes. They are not a selectable cohort. Unknown or missing variant
+metadata stays unknown and is not assumed to be more-balanced. Original exports,
+source CSVs and prior releases are retained for audit/recovery. See
+[GAME_ELIGIBILITY.md](docs/GAME_ELIGIBILITY.md) for metadata and cache migration.
+
 The significant two-player LF **4-QIC → technology** variant has three choices:
 **standard only** (default), **both**, and **variant only**. Classification uses
 explicit BGS option metadata, not faction names. The default excludes that
@@ -42,7 +48,7 @@ can be sorted using their heading buttons (click, Enter or Space). A second
 activation reverses direction; missing measurements stay last. Each table keeps
 its sort when filters refresh. Percentages, VP and sample counts are formatted
 for readability; numeric sorts use the unrounded values. Separate historical wide-CSV
-links are explicitly **unfiltered** and do not reflect current selections.
+links do not reflect current UI selections, but also exclude more-balanced games.
 
 Current views use one player-game observation, actual final net VP, competition
 ranks and shared credit for tied wins. Auction bids are not added back to rank

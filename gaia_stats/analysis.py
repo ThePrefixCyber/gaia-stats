@@ -6,6 +6,8 @@ import re
 
 from .scoring import phase_views, BASE_SOURCES, NORMALIZATION_VERSION
 
+from .eligibility import eligible_rows, faction_variant
+
 RULESETS = ("base", "lost-fleet")
 
 
@@ -75,6 +77,7 @@ def normalize(game):
         raise ValueError("Game has a dropped or withdrawn player")
     if len(states) != len(players):
         raise ValueError("Player state count mismatch")
+    variant, variant_metadata = faction_variant(game)
     options = {**game.get("game", {}).get("options", {}), **data.get("options", {})}
     tiles = data["tiles"]
     round_tiles = tiles["scorings"]["round"]
@@ -153,7 +156,8 @@ def normalize(game):
             "boosters": sorted(tiles["boosters"]),
             "layout": options.get("layout", "standard"),
             "auction": options.get("auction", "none"),
-            "faction_variant": options.get("factionVariant", "standard"),
+            "faction_variant": variant,
+            "faction_variant_sources": variant_metadata,
             "faction_variant_version": options.get("factionVariantVersion", 0),
             "official_center_sectors": options.get("officialCenterSectors", False),
             "map": options.get("map"),
@@ -177,7 +181,7 @@ def skill_context(rows, filters):
     The unit is a player-game observation's pregame Elo, not unique people or
     current ratings. Each player count has its own threshold within a ruleset.
     """
-    rows = [row for row in rows if variant_included(row, filters)]
+    rows = [row for row in eligible_rows(rows) if variant_included(row, filters)]
     mode = filters.get("skill", "custom" if filters.get("min_elo") else "all")
     if mode not in ("all", "top", "custom"):
         raise ValueError("Choose all, top, or custom player skill")
@@ -215,6 +219,7 @@ def select(rows, filters):
     version = filters.get("ruleset")
     if version not in RULESETS:
         raise ValueError("Choose base or lost-fleet explicitly")
+    rows = eligible_rows(rows)
     skill = skill_context(rows, filters)
     table_minimum = None
     if filters.get("min_table_elo"):
@@ -252,6 +257,7 @@ def select(rows, filters):
 
 
 def summarize(rows, minimum=5):
+    rows = eligible_rows(rows)
     groups = defaultdict(list)
     for row in rows:
         # Factions and setup variants remain separate even when viewing all factions.

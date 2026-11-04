@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from .eligibility import ExcludedGame, eligible_rows, require_eligible_export
 from .analysis import normalize, select, summarize, skill_context, qic_mode, variant_included
 
 
@@ -30,7 +31,8 @@ def atomic_json(path, payload):
 
 
 def ingest(paths, output):
-    rows, rejected, seen = [], [], set()
+    rows, rejected, seen, excluded = [], [], set(), set()
+    invalid = False
     for path in paths:
         try:
             text = Path(path).read_text()
@@ -40,6 +42,7 @@ def ingest(paths, output):
             except json.JSONDecodeError:
                 games = [json.loads(line) for line in text.splitlines() if line.strip()]
         except (OSError, ValueError) as exc:
+            invalid = True
             rejected.append({"file": str(path), "reason": str(exc)})
             continue
         for game in games:
@@ -47,17 +50,24 @@ def ingest(paths, output):
             try:
                 if not identifier:
                     raise ValueError("Missing game identifier")
-                if identifier in seen:
+                require_eligible_export(game)
+                if identifier in seen or identifier in excluded:
                     continue
                 normalized = normalize(game)
                 if any(not row["score_verified"] for row in normalized):
                     raise ValueError("VP ledger does not reconcile with final scores")
                 rows.extend(normalized)
                 seen.add(identifier)
-            except (ValueError, KeyError, TypeError, IndexError, AttributeError) as exc:
+            except ExcludedGame as exc:
+                excluded.add(identifier)
                 rejected.append({"file": str(path), "game_id": identifier, "reason": str(exc)})
-    payload = {"schema_version": 1, "rows": rows, "rejected": rejected}
-    if not rows:
+            except (ValueError, KeyError, TypeError, IndexError, AttributeError) as exc:
+                invalid = True
+                rejected.append({"file": str(path), "game_id": identifier, "reason": str(exc)})
+    rows = [row for row in rows if row["game_id"] not in excluded]
+    seen -= excluded
+    payload = {"schema_version": 1, "rows": rows, "rejected": rejected, "excluded_game_ids": sorted(excluded)}
+    if not rows and (not excluded or invalid):
         raise ValueError("No valid player records; existing dataset was not replaced")
     atomic_json(output, payload)
     print(f"Wrote {len(rows)} player records from {len(seen)} games; {len(rejected)} rejected")
@@ -101,7 +111,7 @@ def response_for(dataset, path, filters):
                                "variant_filter": {"mode": qic_mode(filters),
                                    "excluded_records_before_other_filters": sum(
                                        r["ruleset"] == filters["ruleset"] and r["score_verified"]
-                                       and not variant_included(r, filters) for r in dataset["rows"])},
+                                       and not variant_included(r, filters) for r in eligible_rows(dataset["rows"]))},
                                "games": len({r["game_id"] for r in rows}),
                                "player_records": len(rows), "groups": summarize(rows),
                                "rows": rows, "rejected_games": len(dataset["rejected"])}).encode()

@@ -3,6 +3,8 @@ import math
 from collections import defaultdict
 from statistics import mean
 
+from .eligibility import eligible_frame
+
 CORRECTED = {'basic-tech-frequency','basic-tech-score','advanced-tech-frequency',
              'advanced-tech-score','round-scoring','final-scoring'}
 
@@ -13,6 +15,7 @@ def finite(value):
 
 def observations(data, players, min_elo=None):
     """One row per eligible player-game; all players must be explicitly not dropped."""
+    data = eligible_frame(data)
     mask = data[[f'pos_{p}_dropped' for p in range(1,players+1)]].eq(False).all(axis=1)
     clean = data.loc[mask]
     result=[]

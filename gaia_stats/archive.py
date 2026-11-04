@@ -23,6 +23,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .__main__ import atomic_json
+from .eligibility import ExcludedGame, require_eligible_export
 from .analysis import normalize, ruleset
 from .identifiers import valid_slug,url_segment
 
@@ -216,7 +217,7 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                 sha256 TEXT, PRIMARY KEY(mode,slug))''')
             db.execute('CREATE TABLE IF NOT EXISTS events (mode TEXT, recorded_at REAL, reason TEXT)')
             db.execute('CREATE TABLE IF NOT EXISTS cooldowns (host TEXT PRIMARY KEY, retry_at REAL)')
-            summary = dict(mode=mode, pages=0, queued=0, accepted=0, rejected=0, retry=0, skipped=0, listing_error=None)
+            summary = dict(mode=mode, pages=0, queued=0, accepted=0, rejected=0, excluded=0, retry=0, skipped=0, listing_error=None)
             summary['pagination']=pagination
             if pagination=='cursor':
                 summary['cursor_checkpoint']=db.execute('SELECT after_token,complete,pages FROM cursor_scans WHERE mode=?',(mode,)).fetchone()
@@ -343,6 +344,7 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                                  'requested_mode': mode, 'slug': slug})
                     if not isinstance(payload, dict) or payload.get('slug') != slug:
                         raise ValueError('Export slug does not match listing')
+                    require_eligible_export(payload)
                     rows = normalize(payload)
                     if len(rows) not in (2, 3, 4):
                         raise ValueError('Unsupported player count')
@@ -353,6 +355,8 @@ def collect(directory, mode, *, client=None, page_size=10, max_pages=100,
                     atomic_json(root / mode / 'rows' / (slug + '.json'),
                                 {'schema_version': 1, 'source_sha256': digest, 'rows': rows})
                     status, reason, retry_at = 'accepted', None, 0
+                except ExcludedGame as error:
+                    status, reason, retry_at = 'excluded', str(error), 0
                 except (URLError, TimeoutError, ConnectionError) as error:
                     status, reason = 'retry', str(error)
                     retry_at = now() + max(min(86400, 60 * 2 ** min(attempts, 10)),
