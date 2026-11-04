@@ -215,9 +215,16 @@ class PublicationEligibilityTests(unittest.TestCase):
         payload = game('lf-keep'); rows = enrich(payload, normalize(payload))
         self.legacy = self.root/'legacy.json'; self.legacy.write_text(json.dumps({'schema_version': 1, 'rows': rows}))
 
-    def publish(self):
+    def publish(self, **kwargs):
         with release_lock(self.store):
-            return publish(self.store, self.seed, self.archive, self.legacy)
+            return publish(self.store, self.seed, self.archive, self.legacy, **kwargs)
+
+    def mark_merged_release(self):
+        # Simulate the old publisher before the reviewed CSV-only transition.
+        path=current(self.store)/'manifest.json';manifest=json.loads(path.read_text())
+        manifest.pop('base_source_policy',None);manifest['inputs'].pop('base_source_policy',None)
+        path.write_text(json.dumps(manifest))
+
 
     def test_csv_seed_excludes_only_explicit_and_keeps_original(self):
         self.assertEqual(self.imports[2]['accepted_games'], 2)
@@ -239,6 +246,7 @@ class PublicationEligibilityTests(unittest.TestCase):
         (path/'lost-fleet.json').write_text(json.dumps(data))
         manifest = json.loads((path/'manifest.json').read_text())
         manifest.pop('eligibility_policy', None); manifest['inputs'].pop('eligibility_policy', None)
+        manifest.pop('base_source_policy',None); manifest['inputs'].pop('base_source_policy',None)
         manifest['datasets']['base']['games'] += 1; manifest['datasets']['base']['records'] += 2
         manifest['datasets']['lost-fleet']['games'] += 1; manifest['datasets']['lost-fleet']['records'] += 4
         manifest['sha256'] = {name: digest(path/name) for name in ('base.sqlite', 'lost-fleet.json')}
@@ -257,7 +265,7 @@ class PublicationEligibilityTests(unittest.TestCase):
                 status, body = request(app, route, ruleset=mode)
                 self.assertEqual(status, '200 OK')
                 self.assertNotIn(b'old-base-block', body); self.assertNotIn(b'old-lf-block', body)
-        second = self.publish(); self.assertNotEqual(second['release'], first['release'])
+        second = self.publish(allow_static_base_migration=True); self.assertNotEqual(second['release'], first['release'])
         self.assertEqual(second['datasets'], expected)
         self.assertEqual(second['eligibility_policy'], eligibility.POLICY_VERSION)
         self.assertEqual(second['excluded_games'], 3)
@@ -268,24 +276,24 @@ class PublicationEligibilityTests(unittest.TestCase):
         status, body = request(ReleaseApplication(self.store), '/healthz')
         self.assertEqual(status, '200 OK'); self.assertEqual(json.loads(body)['datasets'], expected)
 
-    def test_backfill_resolves_unknown_as_excluded_and_preserves_other_game(self):
-        self.publish(); prior = current(self.store); before = (prior/'base.sqlite').read_bytes()
+    def test_migration_reads_existing_raw_exclusion_and_preserves_other_game(self):
+        self.publish(); self.mark_merged_release(); prior = current(self.store); before = (prior/'base.sqlite').read_bytes()
         payload = flagged(game('seed-unknown', False))
         client = FakeClient({'seed-unknown': payload})
         result = collect(self.archive, 'base', client=client, max_pages=1, max_downloads=1)
         self.assertEqual(result['excluded'], 1)
-        second = self.publish()
+        second = self.publish(allow_static_base_migration=True)
         self.assertEqual(second['datasets']['base'], {'games': 1, 'records': 2})
         self.assertEqual((prior/'base.sqlite').read_bytes(), before)
         self.assertEqual({r['game_id'] for r in base_dataset(current(self.store)/'base.sqlite', {})['rows']}, {'seed-standard'})
         self.assertTrue((self.archive/'base/raw/seed-unknown.json').exists())
 
     def test_all_existing_games_excluded_publishes_safe_empty_mode(self):
-        self.publish()
+        self.publish(); self.mark_merged_release()
         client = FakeClient({slug: flagged(game(slug, False))
                              for slug in ('seed-standard', 'seed-unknown')})
         collect(self.archive, 'base', client=client, max_pages=1, max_downloads=2)
-        second = self.publish()
+        second = self.publish(allow_static_base_migration=True)
         self.assertEqual(second['datasets']['base'], {'games': 0, 'records': 0})
         self.assertEqual(second['empty_after_exclusion'], ['base'])
         self.assertEqual(base_dataset(current(self.store)/'base.sqlite', {})['rows'], [])
@@ -324,23 +332,23 @@ class PublicationEligibilityTests(unittest.TestCase):
         self.assertTrue((self.archive/'base/raw/base-block.json').exists())
 
     def test_historical_rejected_raw_is_exclusion_evidence_only(self):
-        self.publish()
+        self.publish(); self.mark_merged_release()
         client = FakeClient({'seed-unknown': flagged(game('seed-unknown', False)),
                              'rejected-standard': game('rejected-standard', False)})
         collect(self.archive, 'base', client=client, max_pages=1, max_downloads=2)
         with sqlite3.connect(self.archive/'archive.sqlite3') as db:
             db.execute("UPDATE exports SET status='rejected', reason='Historical ledger rejection'")
-        result = self.publish()
+        result = self.publish(allow_static_base_migration=True)
         self.assertEqual(result['datasets']['base'], {'games': 1, 'records': 2})
         self.assertEqual({r['game_id'] for r in base_dataset(current(self.store)/'base.sqlite', {})['rows']}, {'seed-standard'})
         self.assertEqual(client.exports, ['seed-unknown', 'rejected-standard'])
 
     def test_tombstones_prevent_later_unknown_reimport_and_unsafe_rollback(self):
         from gaia_stats.releases import known_exclusions
-        first = self.publish(); prior = current(self.store)
+        first = self.publish(); self.mark_merged_release(); prior = current(self.store)
         client = FakeClient({'seed-unknown': flagged(game('seed-unknown', False))})
         collect(self.archive, 'base', client=client, max_pages=1, max_downloads=1)
-        self.publish()
+        self.publish(allow_static_base_migration=True)
         self.assertEqual(known_exclusions(self.store), {'seed-unknown', 'seed-block'})
         # Deliberately simulate a rollback even outside the protected CLI.
         (self.store/'current.json').write_text(json.dumps({'release': first['release']}))
@@ -349,18 +357,18 @@ class PublicationEligibilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'verified source evidence'):
             validate(prior, known_exclusions=known_exclusions(self.store))
         # Publishing from the rejected rollback can recover without modifying it.
-        self.assertEqual(self.publish()['datasets']['base']['games'], 1)
+        self.assertEqual(self.publish(allow_static_base_migration=True)['datasets']['base']['games'], 1)
         # A legacy unknown copy cannot resurrect a game whose raw evidence disappears.
         unknown = flagged(game('seed-unknown', False), 'unknown')
         data = json.loads(self.legacy.read_text()); data['rows'] += normalize(unknown)
         self.legacy.write_text(json.dumps(data))
         with sqlite3.connect(self.archive/'archive.sqlite3') as db:
             db.execute("UPDATE exports SET status='pending'")
-        self.assertEqual(self.publish()['datasets']['base']['games'], 1)
+        self.assertEqual(self.publish(allow_static_base_migration=True)['datasets']['base']['games'], 1)
 
     def test_registry_swap_interruption_fails_closed_and_recovers(self):
         from gaia_stats.__main__ import atomic_json
-        self.publish(); prior = current(self.store); app = ReleaseApplication(self.store)
+        self.publish(); self.mark_merged_release(); prior = current(self.store); app = ReleaseApplication(self.store)
         self.assertEqual(request(app, '/healthz')[0], '200 OK')
         client = FakeClient({'seed-unknown': flagged(game('seed-unknown', False))})
         collect(self.archive, 'base', client=client, max_pages=1, max_downloads=1)
@@ -368,10 +376,10 @@ class PublicationEligibilityTests(unittest.TestCase):
             atomic_json(path, payload)
             if path == self.store/'exclusions.json':raise RuntimeError('after registry before pointer')
         with patch('gaia_stats.releases.atomic_json', side_effect=interrupt):
-            with self.assertRaisesRegex(RuntimeError, 'after registry'):self.publish()
+            with self.assertRaisesRegex(RuntimeError, 'after registry'):self.publish(allow_static_base_migration=True)
         self.assertEqual(current(self.store), prior)
         self.assertEqual(request(app, '/healthz')[0], '503 Service Unavailable')
-        self.assertEqual(self.publish()['datasets']['base']['games'], 1)
+        self.assertEqual(self.publish(allow_static_base_migration=True)['datasets']['base']['games'], 1)
         self.assertEqual(request(app, '/healthz')[0], '200 OK')
 
     def test_policy_stamped_release_rejects_tampered_excluded_records(self):

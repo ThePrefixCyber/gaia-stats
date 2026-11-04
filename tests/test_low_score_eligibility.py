@@ -130,14 +130,15 @@ class LowScoreTests(unittest.TestCase):
 class LowScorePublicationTests(unittest.TestCase):
     setUp = shared.PublicationEligibilityTests.setUp
     publish = shared.PublicationEligibilityTests.publish
+    mark_merged_release = shared.PublicationEligibilityTests.mark_merged_release
     # Reuse fixture preparation without rerunning the variant-only tests.
     def test_late_low_score_replaces_seed_and_lf_then_persists_across_rollback(self):
-        first = self.publish(); prior = current(self.store)
+        first = self.publish(); self.mark_merged_release(); prior = current(self.store)
         old_files = {path.name: path.read_bytes() for path in prior.iterdir()}
         for mode, slug in (('base', 'seed-unknown'), ('lost-fleet', 'lf-keep')):
             client = FakeClient({slug: scored(game(slug, mode == 'lost-fleet'), 25)})
             collect(self.archive, mode, client=client, max_pages=1, max_downloads=1)
-        result = self.publish()
+        result = self.publish(allow_static_base_migration=True)
         self.assertEqual(result['datasets'], {'base': {'games': 1, 'records': 2}, 'lost-fleet': {'games': 0, 'records': 0}})
         self.assertTrue({'seed-unknown', 'lf-keep'} <= known_exclusions(self.store))
         self.assertEqual({path.name: path.read_bytes() for path in prior.iterdir()}, old_files)
@@ -201,7 +202,7 @@ class LowScorePublicationTests(unittest.TestCase):
         self.assertEqual(self.publish()['datasets']['base']['games'], 1)
         self.assertIn('seed-unknown', known_exclusions(self.store))
 
-    def test_rebuilt_seed_repairs_preserved_history_and_keeps_raw_provenance(self):
+    def test_rebuilt_seed_restores_static_csv_and_archives_raw_overlay(self):
         self.publish(); prior = current(self.store)
         with sqlite3.connect(prior/'base.sqlite') as db:
             old = json.loads(db.execute('SELECT payload FROM observations WHERE game_id="seed-unknown" AND faction="terrans"').fetchone()[0])
@@ -224,7 +225,8 @@ class LowScorePublicationTests(unittest.TestCase):
         repaired = next(row for row in rows if row['game_id'] == 'seed-unknown' and row['faction'] == 'terrans')
         self.assertEqual(repaired['score_basis_version'], 'prebid-v1')
         self.assertEqual(repaired['score'], 120)
-        self.assertTrue(all(row['score'] == 777 for row in rows if row['game_id'] == 'seed-standard'))
+        self.assertTrue(all(row['score'] != 777 for row in rows if row['game_id'] == 'seed-standard'))
+        self.assertTrue(all('vp_sources_raw' not in row for row in rows))
         self.assertEqual((prior/'base.sqlite').read_bytes(), old_bytes)
         self.assertNotEqual(result['release'], prior.name)
 

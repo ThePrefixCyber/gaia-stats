@@ -294,6 +294,9 @@ def publish(root,seed_base,archive,legacy=None,*,dry_run=False,allow_static_base
     excluded=known | legacy_exclusions | stored_exclusions(prior.get('excluded_game_ids',[]) if prior else [])
     seed_ids,seed_exclusions=seed_evidence(seed_base)
     excluded.update(seed_exclusions)
+    if previous and (migrating or prior.get('eligibility_policy') != POLICY_VERSION):
+        with sqlite3.connect((previous/'base.sqlite').resolve().as_uri()+'?mode=ro',uri=True) as db:
+            excluded.update(row[0] for row in db.execute('SELECT DISTINCT game_id FROM observations WHERE NOT ('+BASE_ELIGIBLE_SQL+')'))
     # One-time migration retains verified base exclusion evidence, but imports no
     # base raw observations and never makes base raw part of ongoing identity.
     if migrating or not prior:
@@ -323,7 +326,8 @@ def publish(root,seed_base,archive,legacy=None,*,dry_run=False,allow_static_base
     lf={slug:analysis_rows(rows) for slug,rows in lf.items()}
     base_inputs={'seed':inputs['seed'],'eligibility_policy':POLICY_VERSION,
                  'score_basis_version':SCORE_BASIS_VERSION,'excluded_game_ids':sorted(excluded & seed_ids)}
-    reuse=bool(prior and prior.get('base_source_policy')==BASE_SOURCE_POLICY and prior.get('base_inputs')==base_inputs)
+    reuse=bool(prior and prior.get('base_source_policy')==BASE_SOURCE_POLICY and prior.get('base_inputs')==base_inputs
+               and all(prior.get('inputs',{}).get(k)==inputs[k] for k in ('eligibility_policy','score_basis_version')))
     if reuse and compatible and excluded==stored_exclusions(prior.get('excluded_game_ids',[])):
         old_groups={}
         for row in load_dataset(previous/'lost-fleet.json')['rows']:

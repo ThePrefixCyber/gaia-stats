@@ -55,7 +55,7 @@ class PrebidMigrationTests(unittest.TestCase):
         self.assertEqual(json.loads((destination/'preparation.json').read_text())['state'],'failed')
         self.assertEqual((self.store/'current.json').read_bytes(),pointer)
 
-    def test_unrecoverable_retained_history_blocks_activation_without_record_loss(self):
+    def test_raw_only_history_is_archived_not_served_after_static_migration(self):
         source=self.source();original=current(self.store)
         with sqlite3.connect(original/'base.sqlite') as db:
             old=[json.loads(x[0]) for x in db.execute('SELECT payload FROM observations')]
@@ -66,16 +66,17 @@ class PrebidMigrationTests(unittest.TestCase):
                 db.execute('INSERT INTO observations VALUES (?,?,?,?,?,?,?,?)',
                            tuple(row[k] for k in ('game_id','faction','player_count','elo','layout','auction','faction_variant'))+(json.dumps(row),))
         manifest=json.loads((original/'manifest.json').read_text())
+        manifest.pop('base_source_policy');manifest['inputs'].pop('base_source_policy')
         manifest['datasets']['base']={'games':2,'records':4}
         manifest['sha256']['base.sqlite']=digest(original/'base.sqlite')
         (original/'manifest.json').write_text(json.dumps(manifest))
         before=(original/'base.sqlite').read_bytes();destination=self.root/'unrecoverable'
-        with self.assertRaisesRegex(ValueError,'unknown/non-finite|unmigrated observation'):
-            prepare(destination,self.store,{2:source},self.archive,self.legacy)
+        result=prepare(destination,self.store,{2:source},self.archive,self.legacy)
+        self.assertEqual(result['state'],'ready')
         self.assertEqual((original/'base.sqlite').read_bytes(),before)
         with sqlite3.connect(current(destination/'releases-store')/'base.sqlite') as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM observations').fetchone()[0],4)
-        self.assertEqual(json.loads((destination/'preparation.json').read_text())['state'],'failed')
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM observations').fetchone()[0],2)
+        self.assertEqual(json.loads((destination/'preparation.json').read_text())['state'],'ready')
 
     def test_changed_csv_or_active_collector_never_marks_candidate_ready(self):
         source=self.source();destination=self.root/'raced'
