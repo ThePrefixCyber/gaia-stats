@@ -14,6 +14,8 @@ print(json.dumps({'catalog':json.loads(response(d,'/cohort/api/catalog',{})[0]),
  const queries=[];
  await page.route('http://gaia.test/**',async route=>{const url=new URL(route.request().url());let body,contentType='text/html';
  if(url.pathname==='/cohort/tile-labels.js'){body=asset;contentType='application/javascript';}
+ else if(url.pathname==='/cohort/tables.js'){body=fs.readFileSync('web/cohort/tables.js','utf8');contentType='application/javascript';}
+ else if(url.pathname==='/cohort/styles.css'){body=fs.readFileSync('web/cohort/styles.css','utf8');contentType='text/css';}
  else if(url.pathname==='/cohort/app.js'){body=fs.readFileSync('web/cohort/app.js','utf8');contentType='application/javascript';}
  else if(url.pathname.includes('plotly')){body='window.Plotly={purge(){},newPlot(el,traces,layout){window.lastPlot={traces,layout};}}';contentType='application/javascript';}
  else if(url.pathname.endsWith('/catalog')){body=JSON.stringify(data.catalog);contentType='application/json';}

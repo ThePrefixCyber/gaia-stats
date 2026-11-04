@@ -37,7 +37,11 @@ round/final/advanced-tech tables and selected player-game CSV:
 - Signed VP-source distributions with exact quartiles and min/max whiskers.
 
 Sample counts and unavailable observations are shown. Empty selections produce
-no-data results rather than invented zero scores. Separate historical wide-CSV
+no-data results rather than invented zero scores. All current cohort table columns
+can be sorted using their heading buttons (click, Enter or Space). A second
+activation reverses direction; missing measurements stay last. Each table keeps
+its sort when filters refresh. Percentages, VP and sample counts are formatted
+for readability; numeric sorts use the unrounded values. Separate historical wide-CSV
 links are explicitly **unfiltered** and do not reflect current selections.
 
 Current views use one player-game observation, actual final net VP, competition
@@ -167,6 +171,7 @@ Use Python 3.12 and the current web/test dependency set:
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-web.txt
 .venv/bin/python -m unittest discover -s tests -v
+node --test tests/frontend/tables.test.cjs
 ```
 
 The historical `requirements.txt` belongs to the original notebooks; it is not
