@@ -274,6 +274,20 @@ class DataContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'exactly match'):
             self.check()
 
+    def test_classic_parity_cannot_omit_entire_unlisted_seed_partition(self):
+        extra=[dict(self.rows[0],game_id='three-player',player_count=3,faction=faction,
+                    score=150,reported_score=150,bid_delta=0,rank=1,win_share=1/3)
+               for faction in ('terrans','xenos','itars')]
+        for path in (self.seed,self.release/'base.sqlite'):
+            with sqlite3.connect(path) as db:
+                db.executemany('INSERT INTO observations VALUES (?,?,?)',
+                               [(row['game_id'],row['faction'],json.dumps(row)) for row in extra])
+        self.manifest['datasets']['base']={'games':2,'records':5}
+        self.manifest['inputs']['seed']=guard.digest(self.seed)
+        self.rehash()
+        with self.assertRaisesRegex(ValueError,'provenance omits observed games'):
+            self.check()
+
     def test_classic_parity_uses_seed_minus_verified_exclusions(self):
         self.write(self.root/'exclusions.json', {'eligibility_policy':3, 'game_ids':['base']})
         self.manifest['excluded_game_ids']=['base']
